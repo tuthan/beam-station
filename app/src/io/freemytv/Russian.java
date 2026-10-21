@@ -81,6 +81,9 @@ final class Russian {
             case "Switch to 2D": return "Включить 2D";
             case "The glasses are in 3D.": return "Очки в режиме 3D.";
             case "The glasses are in 2D.": return "Очки в режиме 2D.";
+            case "Brightness": return "Яркость";
+            case "Display zoom": return "Масштаб экрана";
+            case "Couldn't open it.": return "Не удалось открыть.";
             case "HDMI Inputs": return "Входы HDMI";
             case "Inputs": return "Входы";
             case "Shortcuts": return "Ярлыки";

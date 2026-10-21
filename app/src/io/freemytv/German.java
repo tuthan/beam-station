@@ -75,6 +75,9 @@ final class German {
             case "Switch to 2D": return "Zu 2D wechseln";
             case "The glasses are in 3D.": return "Die Brille ist in 3D.";
             case "The glasses are in 2D.": return "Die Brille ist in 2D.";
+            case "Brightness": return "Helligkeit";
+            case "Display zoom": return "Bildschirmzoom";
+            case "Couldn't open it.": return "Ließ sich nicht öffnen.";
             case "HDMI Inputs": return "HDMI-Eingänge";
             case "Inputs": return "Eingänge";
             case "Shortcuts": return "Verknüpfungen";

@@ -1,6 +1,7 @@
 package io.freemytv;
 
 import android.content.Context;
+import android.content.Intent;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteException;
@@ -37,6 +38,13 @@ final class Rokid {
     static final int[] SCENES = {1, 2, 3, 4};
     /** Speaker mode: private (quieter, so others hear less) or public. */
     static final int[] AUDIO = {0, 1};
+    /**
+     * Sliders that Rokid's quick menu (assistserver's ShortcutMenuService) shows over any app: the glasses' brightness
+     * (not in rokid_display) and the display zoom. Rokid's Settings opens them with these broadcasts; the receiver
+     * takes them with no permission.
+     */
+    static final String BRIGHTNESS = "android.intent.action.displayBrightness.MENU", ZOOM = "com.rokid.erbox.action.displayZoom";
+    private static final String ASSIST = "com.rokid.glass.er.assistserver";
     /** `service call`'s answer: the exception code (0 = none), then the int the call returned. */
     private static final Pattern PARCEL = Pattern.compile("Result: Parcel\\(([0-9a-f]{8}) ([0-9a-f]{8})");
 
@@ -68,6 +76,17 @@ final class Rokid {
     static State read(Context c) {
         if (!available()) return null;
         return with(c, calls -> calls.call(PLUGGED, null) == 0 ? null : readAll(calls));
+    }
+
+    /** Opens one of Rokid's sliders (BRIGHTNESS, ZOOM). False: the broadcast couldn't be sent. */
+    static boolean openSlider(Context c, String action) {
+        try {
+            c.sendBroadcast(new Intent(action).setPackage(ASSIST));
+            return true;
+        } catch (RuntimeException e) {
+            AppLog.w("glasses: couldn't open " + action + ": " + e.getMessage());
+            return false;
+        }
     }
 
     /** The glasses' display mode, or -1 when no glasses are plugged in or the service can't be reached. */

@@ -996,6 +996,9 @@ public class SettingsActivity extends Activity {
 
         // MARK: - Glasses (Rokid Station)
 
+        /** The Glasses page: four settings, then Brightness and Display zoom, which open Rokid's own sliders. */
+        private static final int GLASSES_ROWS = 6, SLIDER_ROW = 4;
+
         private static String sceneName(int scene) {
             switch (scene) {
                 case 1: return Ui.tr("Padrão", "Standard");
@@ -1017,11 +1020,11 @@ public class SettingsActivity extends Activity {
 
         private String[] glassesLabels() {
             return new String[] {Ui.tr("Modo", "Mode"), Ui.tr("Taxa de atualização", "Refresh rate"), Ui.tr("Imagem", "Picture"),
-                    Ui.tr("Alto-falantes", "Speakers")};
+                    Ui.tr("Alto-falantes", "Speakers"), Ui.tr("Brilho", "Brightness"), Ui.tr("Zoom da tela", "Display zoom")};
         }
 
         private String[] glassesValues() {
-            String[] v = new String[4];
+            String[] v = new String[GLASSES_ROWS];
             if (glasses == null) {
                 java.util.Arrays.fill(v, "—");
                 return v;
@@ -1030,6 +1033,7 @@ public class SettingsActivity extends Activity {
             v[1] = hz(glasses.fps);
             v[2] = sceneName(glasses.scene);
             v[3] = glasses.audio == 0 ? Ui.tr("Privado", "Private") : Ui.tr("Público", "Public");
+            v[4] = v[5] = Ui.tr("Abrir", "Open");
             return v;
         }
 
@@ -1068,6 +1072,7 @@ public class SettingsActivity extends Activity {
             if (glasses == null || glassesChanges >= 3) return;   // a held arrow doesn't queue a long run of changes
             Rokid.State g = glasses;
             int row = focus, want;
+            if (row >= SLIDER_ROW) return;   // Brightness and Display zoom only open, with OK
             if (glassesLocked(row)) {
                 glassesLine = Ui.tr("120 Hz é só no 2D.", "120 Hz is for 2D only.");
                 return;
@@ -1774,6 +1779,13 @@ public class SettingsActivity extends Activity {
                 if (screen == BT) activateBt(); else activateBtDevice();
                 invalidate();
                 spoken.focusMoved();
+                return;
+            }
+            if (screen == GLASSES && focus >= SLIDER_ROW) {
+                if (!Rokid.openSlider(c, focus == SLIDER_ROW ? Rokid.BRIGHTNESS : Rokid.ZOOM)) {
+                    glassesLine = Ui.tr("Não deu para abrir.", "Couldn't open it.");
+                }
+                invalidate();
                 return;
             }
             if (screen == GLASSES) {
