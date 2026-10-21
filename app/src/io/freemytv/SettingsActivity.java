@@ -1138,8 +1138,8 @@ public class SettingsActivity extends Activity {
         private String[] powerValues() {
             String[] v = new String[4];
             v[0] = battery == null ? "—" : battery.level + "% · " + (battery.plugged ? Ui.tr("Carregando", "Charging") : Ui.tr("Na bateria", "On battery"));
-            v[1] = timeouts == null ? "—" : Power.duration(timeouts.screensaver);
-            v[2] = timeouts == null ? "—" : timeouts.sleep < 0 ? Ui.tr("Nunca", "Never") : Power.duration(timeouts.sleep);
+            v[1] = timeouts == null ? "—" : Power.seconds(timeouts.screensaver);
+            v[2] = timeouts == null ? "—" : timeouts.sleep < 0 ? Ui.tr("Nunca", "Never") : Power.seconds(timeouts.sleep);
             int left = Power.left(timerEnd);
             v[3] = left == 0 ? Ui.tr("Desligado", "Off") : Power.duration(left);
             return v;

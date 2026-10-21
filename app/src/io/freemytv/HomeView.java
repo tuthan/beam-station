@@ -479,13 +479,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         motionDirty = true;
     }
 
-    /** The corner buttons, with their names in the current language (Live TV only where there is live TV). */
+    /**
+     * The corner buttons, with their names in the current language (Live TV only where there is live TV; HDMI Inputs
+     * not on the Rokid Station, which has none).
+     */
     private void makeLightButtons() {
         lightButtons.clear();
         if (HomeApps.liveTv(getContext()) != null) {
             lightButtons.add(HomeApps.action(HomeApps.LIVE_TV, "live", Ui.tr("TV aberta", "Live TV"), "live_tv"));
         }
-        lightButtons.add(HomeApps.action(HomeApps.INPUTS, "inputs", Ui.tr("Entradas HDMI", "HDMI Inputs"), "hdmi"));
+        if (!HomeMode.ROKID) lightButtons.add(HomeApps.action(HomeApps.INPUTS, "inputs", Ui.tr("Entradas HDMI", "HDMI Inputs"), "hdmi"));
         lightButtons.add(HomeApps.action(HomeApps.SETTINGS, "settings", Ui.tr("Configurações", "Settings"), "settings"));
     }
 

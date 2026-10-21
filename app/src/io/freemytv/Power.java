@@ -29,16 +29,16 @@ final class Power {
     }
 
     static final class Timeouts {
-        int screensaver, sleep;   // minutes idle; sleep -1: never
+        int screensaver, sleep;   // seconds idle; sleep -1: never
         boolean stayOnPlugged;    // Android keeps the screen on while plugged in (stay_on_while_plugged_in)
     }
 
-    /** Minutes idle before the screensaver starts. */
-    static final int[] SCREENSAVER = {1, 5, 10, 15, 30};
-    /** Minutes idle (the screensaver counts) before the Station sleeps; -1: never. */
-    static final int[] SLEEP = {30, 60, 120, 240, -1};
+    /** Seconds idle before the screensaver starts: 30 s to 30 min. */
+    static final int[] SCREENSAVER = {30, 60, 120, 300, 600, 900, 1800};
+    /** Seconds idle (the screensaver counts) before the Station sleeps: 5 min to 4 h; -1: never. */
+    static final int[] SLEEP = {300, 600, 900, 1800, 3600, 7200, 14400, -1};
     /** The sleep timer's steps, in minutes; 0: off. */
-    static final int[] TIMER = {0, 30, 60, 90, 120};
+    static final int[] TIMER = {0, 15, 30, 60, 90, 120};
     /** The sleep timer's alarm (to HomeReceiver, in the main process). */
     static final String SLEEP_TIMER = "io.freemytv.SLEEP_TIMER";
     /** When the sleep timer goes off (System.currentTimeMillis), shared by the processes; empty: off. */
@@ -82,12 +82,12 @@ final class Power {
         }
     }
 
-    static Timeouts setScreensaver(Context c, int minutes) throws IOException {
-        return set(c, "system screen_off_timeout", minutes * 60_000L);
+    static Timeouts setScreensaver(Context c, int seconds) throws IOException {
+        return set(c, "system screen_off_timeout", seconds * 1000L);
     }
 
-    static Timeouts setSleep(Context c, int minutes) throws IOException {
-        return set(c, "secure sleep_timeout", minutes < 0 ? -1 : minutes * 60_000L);
+    static Timeouts setSleep(Context c, int seconds) throws IOException {
+        return set(c, "secure sleep_timeout", seconds < 0 ? -1 : seconds * 1000L);
     }
 
     private static Timeouts set(Context c, String setting, long ms) throws IOException {
@@ -100,20 +100,25 @@ final class Power {
 
     private static Timeouts timeouts(Adb adb) throws IOException {
         Timeouts t = new Timeouts();
-        t.screensaver = minutes(adb.shell("settings get system screen_off_timeout"));
-        t.sleep = minutes(adb.shell("settings get secure sleep_timeout"));
+        t.screensaver = seconds(adb.shell("settings get system screen_off_timeout"));
+        t.sleep = seconds(adb.shell("settings get secure sleep_timeout"));
         t.stayOnPlugged = !adb.shell("settings get global stay_on_while_plugged_in").trim().equals("0");
         return t;
     }
 
-    /** Milliseconds as `settings get` prints them, in minutes; -1 for never (negative, or unset: "null"). */
-    private static int minutes(String ms) {
+    /** Milliseconds as `settings get` prints them, in seconds; -1 for never (negative, or unset: "null"). */
+    private static int seconds(String ms) {
         try {
             long v = Long.parseLong(ms.trim());
-            return v < 0 ? -1 : (int) Math.round(v / 60_000.0);
+            return v < 0 ? -1 : (int) Math.round(v / 1000.0);
         } catch (NumberFormatException e) {
             return -1;
         }
+    }
+
+    /** A timeout in seconds, as the settings show it: 30 s, 5 min, 2 h. */
+    static String seconds(int s) {
+        return s < 60 ? s + (Ui.ru ? " с" : " s") : duration(Math.round(s / 60f));
     }
 
     /** A length of time, as the settings show it: 30 min, 2 h, 1 h 30 min. */
@@ -137,7 +142,7 @@ final class Power {
         return end == 0 || ms <= 0 ? 0 : (int) ((ms + 59_999) / 60_000);
     }
 
-    /** The timer step after (dir 1) or before (dir -1) what's left now: off, 30, 60, 90, 120 min. */
+    /** The timer step after (dir 1) or before (dir -1) what's left now: off, 15, 30, 60, 90, 120 min. */
     static int nextTimer(int left, int dir) {
         int at = 0;
         while (at < TIMER.length - 1 && TIMER[at] < left) at++;
