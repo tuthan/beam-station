@@ -366,8 +366,21 @@ final class HomeApps {
         return it;
     }
 
-    /** The TV's own settings: one place for the settings row and the home shortcut, so a device can open its own. */
+    /** Rokid's own Settings has the glasses' pages; Android TV's, which ACTION_SETTINGS opens there, has none. */
+    private static final ComponentName ROKID_SETTINGS = new ComponentName("com.rokid.erbox.settings",
+            "com.rokid.erbox.settings.MainActivity");
+
+    /** The TV's own settings (on the Rokid Station, Rokid's). */
     static boolean openTvSettings(Context c) {
+        if (HomeMode.ROKID) {
+            try {
+                c.startActivity(new Intent(Intent.ACTION_MAIN).setComponent(ROKID_SETTINGS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                return true;
+            } catch (ActivityNotFoundException | SecurityException e) {
+                AppLog.w("couldn't open Rokid's settings: " + e.getMessage());
+            }
+        }
         try {
             c.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return true;
@@ -399,6 +412,7 @@ final class HomeApps {
                 intent = new Intent().setComponent(new ComponentName(a, SettingsActivity.class));
                 break;
             case ANDROID_SETTINGS:
+                if (HomeMode.ROKID) return openTvSettings(a);
                 intent = new Intent(Settings.ACTION_SETTINGS);
                 break;
             default:
