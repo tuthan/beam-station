@@ -85,6 +85,21 @@ final class Rokid {
         return set(c, SET_AUDIO, audio);
     }
 
+    /**
+     * The home screen is back: glasses left in 3D go back to 2D, as Rokid's own launcher does (a 3D player leaves them
+     * in 3D, and our home screen isn't made for it). Nothing is set when no glasses are plugged in. Doesn't wait; a
+     * read asked after it (the drawer's 2D/3D button) gets the mode it leaves.
+     */
+    static void homeResumed(Context c) {
+        if (!available()) return;
+        Context app = c.getApplicationContext();
+        WORK.execute(() -> run(app, calls -> {
+            if (calls.call(PLUGGED, null) == 0 || calls.call(GET_MODE, null) != MODE_3D) return null;
+            AppLog.w("glasses: back to 2D on the home screen (" + (calls.call(SET_MODE, MODE_2D) == 1 ? "done" : "refused") + ")");
+            return null;
+        }));
+    }
+
     /** Changes one setting when glasses are plugged in, then reads them all back (120 Hz changes the mode too). */
     private static State set(Context c, int code, int value) {
         if (!available()) return null;
