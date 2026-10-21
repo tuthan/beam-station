@@ -2,7 +2,10 @@ package io.freemytv;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapShader;
@@ -235,11 +238,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private int weatherLinePrefs = -1;
     private String weatherLineLanguage = "";
     private long clockMinute = -1;
+    private Power.Battery battery;   // Rokid Station: the battery in the corner (null: none to show)
+    private final BroadcastReceiver batteryEvents = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            Power.Battery b = Power.battery(i);
+            if (b == null ? battery == null : battery != null && b.level == battery.level && b.plugged == battery.plugged) return;
+            battery = b;
+            status.invalidate();
+        }
+    };
     private boolean okDown, backDown;
 
     private Paint labelPaint, metaPaint, clockPaint, buttonPaint, capsuleText, tipPaint, quotePaint, staleQuote;
     private Paint rowTitle, drawerLabel, cardTitle, cardText, cardDim, cardDimRight, bigTemp, hourPaint, hourTemp;
-    private Paint pricePaint, changePaint, sheetTitle;
+    private Paint pricePaint, changePaint, sheetTitle, batteryPaint;
     private TextPaint titlePaint, gridLabel, toastPaint;
     private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint imagePaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
@@ -408,6 +420,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.refreshIfStale();
         recs.refreshIfStale();
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
+        if (Power.available()) battery = Power.battery(getContext().registerReceiver(batteryEvents, new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
         handler.postDelayed(tick, 15_000);
         checkNotices();
         reload();
@@ -434,6 +447,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.removeListener(this);
         recs.removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
+        if (Power.available()) getContext().unregisterReceiver(batteryEvents);
     }
 
     void destroy() {
@@ -578,6 +592,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lCardMeta = Ui.text(Ui.medium, 25 * k, L_DIM);
         lQuote = Ui.numbers(Ui.regular, 21 * k, L_FAINT);
         lTip = Ui.text(Ui.semibold, 25 * k, L_INK);
+        batteryPaint = Ui.numbers(Ui.semibold, 26 * k, L_INK);
         lTip.setTextAlign(Paint.Align.CENTER);
         lDate = Ui.text(Ui.semibold, 34 * k, L_DIM);
         lClock = Ui.numbers(Ui.light, 200 * k, L_INK);
@@ -2836,6 +2851,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
      */
     private void drawLightButtons(Canvas c) {
         applyTone();
+        drawBattery(c);
         for (int i = 0; i < lightButtons.size(); i++) {
             RectF r = topRects[3 + i];
             float f = Ui.clamp(topFocus[3 + i].value), s = 1 + 0.1f * f, rad = r.width() / 2 * s;
@@ -2861,6 +2877,21 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 c.drawText(label, x, r.bottom + (40 + 4 * f) * k, lTip);
             }
         }
+    }
+
+    /** Rokid Station: the battery, left of the corner buttons (its level, and a bolt while plugged in). */
+    private void drawBattery(Canvas c) {
+        Power.Battery b = battery;
+        if (b == null || lightButtons.isEmpty()) return;
+        String text = b.level + "%";
+        float right = topRects[3].left - 28 * k, cy = L_BUTTON_CY * k;
+        int ink = tone(L_INK, 0xEBFFFFFF);
+        batteryPaint.setColor(ink);
+        float tw = batteryPaint.measureText(text);
+        c.drawText(text, right - tw, cy + Ui.halfCap(batteryPaint), batteryPaint);
+        String symbol = Power.symbol(b);
+        float sw = Symbols.width(getContext(), symbol, 26 * k);
+        Symbols.draw(getContext(), c, symbol, right - tw - 10 * k - sw / 2, cy, 26 * k, ink);
     }
 
     private boolean moveLight(int dx, int dy) {

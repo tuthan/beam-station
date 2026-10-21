@@ -20,6 +20,9 @@ MAP = {
     "live_tv": ("live_tv", 1), "bitcoin": ("currency_bitcoin", 0),
     "wifi_1": ("network_wifi_1_bar", 1), "wifi_2": ("network_wifi_2_bar", 1), "wifi_3": ("network_wifi_3_bar", 1),
     "wifi_4": ("signal_wifi_4_bar", 1), "lock": ("lock", 1), "3d": ("view_in_ar", 1),
+    "battery_full": ("battery_android_full", 1), "battery_5": ("battery_android_5", 1),
+    "battery_3": ("battery_android_3", 1), "battery_1": ("battery_android_1", 1),
+    "battery_alert": ("battery_android_alert", 1), "battery_bolt": ("battery_android_bolt", 1),
 }
 
 
