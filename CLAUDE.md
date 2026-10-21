@@ -142,6 +142,13 @@ Then, in the code:
 - Build, install, have them switch on the TV, read `adb logcat -s FreeMyTV`, then have them switch back to
   *Original* once and confirm everything returned.
 
+Rokid Station (the Android 11 box for Rokid's AR glasses, Amlogic): its ROM refuses `pm disable-user`, `pm enable`,
+`pm hide` and `pm uninstall` for every system app (`Failure [not support for 0]`), so Free My TV mode turns nothing
+off there and only takes the home screen; Rokid's launcher stays on (HOME stays ours through a glasses replug and a
+reboot). *TV Settings* opens Rokid's Settings. Taking the glasses off puts the box to sleep and drops Wi-Fi and ADB:
+keep them on (or the proximity sensor covered) while you work from the computer. The glasses' 2D/3D, refresh rate,
+scene and speaker mode are Rokid's `rokid_display` service (`adb shell dumpsys rokid_display`).
+
 LG and Samsung: the web app above. Other TVs that don't run Google TV or Android TV: the way is a Google TV streamer on
 HDMI (Chromecast with Google TV, Google TV Streamer, onn 4K, NVIDIA Shield). Set Free My TV up on the streamer.
 
