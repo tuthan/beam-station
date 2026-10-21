@@ -64,6 +64,10 @@ final class Russian {
             case "Speaker mode is on.": return "Режим колонки включён.";
             case "Speaker mode is off.": return "Режим колонки выключен.";
             case "Speaker mode isn't available right now.": return "Режим колонки сейчас недоступен.";
+            case "Eco Mode": return "Эко-режим";
+            case "Eco mode isn't available right now.": return "Эко-режим сейчас недоступен.";
+            case "Eco mode is on: less brightness and sound, more battery.": return "Эко-режим включён: меньше яркости и звука, дольше от батареи.";
+            case "Eco mode is off.": return "Эко-режим выключен.";
             case "Picture": return "Изображение";
             case "Picture mode": return "Режим изображения";
             case "Motion smoothing": return "Сглаживание движения";

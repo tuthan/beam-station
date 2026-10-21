@@ -4,7 +4,6 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.ServiceConnection;
-import android.os.Build;
 import android.os.IBinder;
 import android.os.Parcel;
 import android.os.RemoteException;
@@ -45,9 +44,8 @@ final class Picture {
         }
     }
 
-    /** XGIMI's Play 6 (its code name is dayao). */
     static boolean available() {
-        return HomeMode.XGIMI && "Product_dayao".equals(Build.PRODUCT);
+        return Xgimi.PLAY_6;
     }
 
     static int indexOf(int[] values, int v) {

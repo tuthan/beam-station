@@ -144,7 +144,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final Spring[] cardFocus = new Spring[3];
     private final RectF[] cardRects = new RectF[3];
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
-    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote;
+    private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote, lBattery;
     private Shader lightGradient;
 
     // Shelf
@@ -231,6 +231,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private int w, h;
     private float k = 1;
     private String clockText = "", dateText = "", weatherLine = "";
+    // XGIMI's Play 6: its battery's level and icon (Xgimi.battery), next to the round buttons; empty elsewhere.
+    private String batteryText = "", batterySymbol = "";
     private long weatherLineAt = -1;
     private int weatherLinePrefs = -1;
     private String weatherLineLanguage = "";
@@ -339,6 +341,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             data.refreshIfStale();
             recs.refreshIfStale();
             checkNotices();
+            checkBattery();
             updatePalette();
             checkNight(true);
             updatePicks();      // three new ones every hour
@@ -410,6 +413,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
         handler.postDelayed(tick, 15_000);
         checkNotices();
+        checkBattery();
         reload();
         updatePalette();
         updatePicks();
@@ -579,6 +583,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lQuote = Ui.numbers(Ui.regular, 21 * k, L_FAINT);
         lTip = Ui.text(Ui.semibold, 25 * k, L_INK);
         lTip.setTextAlign(Paint.Align.CENTER);
+        lBattery = Ui.numbers(Ui.semibold, 27 * k, L_INK);
         lDate = Ui.text(Ui.semibold, 34 * k, L_DIM);
         lClock = Ui.numbers(Ui.light, 200 * k, L_INK);
         lClock.setLetterSpacing(-0.01f);
@@ -1922,6 +1927,24 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         });
     }
 
+    /** XGIMI's Play 6: the battery, read in the background; the corner is redrawn only when it changes. */
+    private void checkBattery() {
+        if (!Xgimi.PLAY_6) return;
+        LOADER.execute(() -> {
+            Xgimi.Battery b = Xgimi.battery();
+            String text = b == null ? "" : b.level + "%";
+            String symbol = b == null ? "" : b.adapter && !b.full ? "battery_bolt" : b.full ? "battery_full"
+                    : b.level <= 10 ? "battery_alert" : "battery_" + Math.max(1, Math.min(6, (b.level * 6 + 99) / 100));
+            handler.post(() -> {
+                if (text.equals(batteryText) && symbol.equals(batterySymbol)) return;
+                batteryText = text;
+                batterySymbol = symbol;
+                statusDirty = true;
+                wake();
+            });
+        });
+    }
+
     // MARK: - Lists (in the background, so returning to the home screen isn't delayed)
 
     private void reload() {
@@ -2189,6 +2212,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     : on ? Ui.tr("Modo caixa de som ligado.", "Speaker mode is on.")
                     : Ui.tr("Modo caixa de som desligado.", "Speaker mode is off.")));
             if (!asked) showToast(Ui.tr("Não deu para abrir ", "Couldn't open ") + it.label + ".");
+            return;
+        }
+        if (it.kind == HomeApps.ECO) {
+            Xgimi.toggleEco(on -> showToast(on == null
+                    ? Ui.tr("O modo econômico não está disponível agora.", "Eco mode isn't available right now.")
+                    : on ? Ui.tr("Modo econômico ligado: menos brilho e som, mais bateria.", "Eco mode is on: less brightness and sound, more battery.")
+                    : Ui.tr("Modo econômico desligado.", "Eco mode is off.")));
             return;
         }
         if (it.kind == HomeApps.INPUTS) {
@@ -2825,10 +2855,19 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /**
      * Live TV (where there is one), HDMI Inputs and Settings: icon-only glass circles (light by day, smoked at night); the focused one turns
-     * white with a dark icon (the tvOS focus) and its name appears below it.
+     * white with a dark icon (the tvOS focus) and its name appears below it. On XGIMI's Play 6, the battery to their left.
      */
     private void drawLightButtons(Canvas c) {
         applyTone();
+        if (!batteryText.isEmpty() && !lightButtons.isEmpty()) {
+            // The battery, left of the round buttons: its level, then its icon (red when it's nearly empty).
+            float size = 40 * k, iw = Symbols.width(getContext(), batterySymbol, size);
+            float right = topRects[3].left - 30 * k, cy = L_BUTTON_CY * k;
+            int ink = tone(L_INK, 0xEBFFFFFF);
+            Symbols.draw(getContext(), c, batterySymbol, right - iw / 2, cy, size, batterySymbol.equals("battery_alert") ? 0xFFFF453A : ink);
+            lBattery.setColor(ink);
+            c.drawText(batteryText, right - iw - 10 * k - lBattery.measureText(batteryText), cy + Ui.halfCap(lBattery), lBattery);
+        }
         for (int i = 0; i < lightButtons.size(); i++) {
             RectF r = topRects[3 + i];
             float f = Ui.clamp(topFocus[3 + i].value), s = 1 + 0.1f * f, rad = r.width() / 2 * s;

@@ -23,7 +23,7 @@ import java.util.function.Consumer;
 
 /**
  * XGIMI projectors: auto focus, auto keystone and speaker mode through XGIMI's own services (exported, with no
- * permission), and the system language. XGIMI's screens are Chinese only, and its Settings switches the system to
+ * permission), the Play 6's battery and eco mode, and the system language. XGIMI's screens are Chinese only, and its Settings switches the system to
  * Chinese each time it opens, with a notice whose OK closes the panel. So in Free My TV mode the system language
  * follows Free My TV's: Chinese just before XGIMI's panel opens (no notice), ours again when our windows get focus back.
  */
@@ -119,6 +119,70 @@ final class Xgimi {
             AppLog.w("speaker mode: " + e.getMessage());
         }
         return false;
+    }
+
+    // MARK: - Battery and eco mode
+
+    /**
+     * The Play 6's battery, from XGIMI's platform library (com.xgimi.api, on the boot class path, so this app can call
+     * it as XGIMI's own apps do). Android's battery service doesn't know this battery: it says there is none.
+     */
+    static final class Battery {
+        int level;
+        boolean adapter, full;
+    }
+
+    /** XGIMI's Play 6 (code name dayao): the model whose battery and eco mode were checked. */
+    static final boolean PLAY_6 = HomeMode.XGIMI && "Product_dayao".equals(android.os.Build.PRODUCT);
+
+    /** The battery now, or null where there is none to read. Blocks briefly: not on the UI thread. */
+    static Battery battery() {
+        if (!PLAY_6) return null;
+        try {
+            Object power = platform("com.xgimi.gmpf.api.PowerManager");
+            Battery b = new Battery();
+            b.level = ((Number) call(power, "getBatteryLevel")).intValue();
+            b.adapter = (Boolean) call(power, "isAdapterPowered");
+            b.full = (Boolean) call(power, "isBatteryChargedFull");
+            return b.level >= 0 && b.level <= 100 ? b : null;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            AppLog.w("battery: " + e);
+            return null;
+        }
+    }
+
+    static boolean hasEco() {
+        return PLAY_6;
+    }
+
+    /**
+     * Eco mode on or off: lower brightness and sound for a longer battery, as XGIMI's Settings sets it. `done` gets,
+     * on the main thread, whether it is on now, or null when it didn't change.
+     */
+    static void toggleEco(Consumer<Boolean> done) {
+        WORK.execute(() -> {
+            Boolean on = null;
+            try {
+                Object system = platform("com.xgimi.gmpf.api.SystemManager");
+                boolean was = (Boolean) call(system, "getEcoState");
+                system.getClass().getMethod("setEcoState", boolean.class).invoke(system, !was);
+                boolean now = (Boolean) call(system, "getEcoState");
+                AppLog.w("eco mode " + (now ? "on" : "off"));
+                if (now != was) on = now;
+            } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+                AppLog.w("eco mode: " + e);
+            }
+            Boolean result = on;
+            MAIN.post(() -> done.accept(result));
+        });
+    }
+
+    private static Object platform(String manager) throws ReflectiveOperationException {
+        return Class.forName(manager).getMethod("getInstance").invoke(null);
+    }
+
+    private static Object call(Object o, String getter) throws ReflectiveOperationException {
+        return o.getClass().getMethod(getter).invoke(o);
     }
 
     private static int mode(IBinder b) throws RemoteException {

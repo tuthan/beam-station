@@ -58,6 +58,10 @@ final class German {
             case "Speaker mode is on.": return "Lautsprechermodus ist an.";
             case "Speaker mode is off.": return "Lautsprechermodus ist aus.";
             case "Speaker mode isn't available right now.": return "Der Lautsprechermodus ist gerade nicht verfügbar.";
+            case "Eco Mode": return "Eco-Modus";
+            case "Eco mode isn't available right now.": return "Der Eco-Modus ist gerade nicht verfügbar.";
+            case "Eco mode is on: less brightness and sound, more battery.": return "Eco-Modus an: weniger Helligkeit und Ton, mehr Akku.";
+            case "Eco mode is off.": return "Eco-Modus aus.";
             case "Picture": return "Bild";
             case "Picture mode": return "Bildmodus";
             case "Motion smoothing": return "Bewegungsglättung";

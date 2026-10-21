@@ -57,6 +57,10 @@ final class Spanish {
             case "Speaker mode is on.": return "Modo altavoz activado.";
             case "Speaker mode is off.": return "Modo altavoz desactivado.";
             case "Speaker mode isn't available right now.": return "El modo altavoz no está disponible ahora.";
+            case "Eco Mode": return "Modo ahorro";
+            case "Eco mode isn't available right now.": return "El modo ahorro no está disponible ahora.";
+            case "Eco mode is on: less brightness and sound, more battery.": return "Modo ahorro activado: menos brillo y sonido, más batería.";
+            case "Eco mode is off.": return "Modo ahorro desactivado.";
             case "Picture": return "Imagen";
             case "Picture mode": return "Modo de imagen";
             case "Motion smoothing": return "Suavizado de movimiento";

@@ -57,8 +57,8 @@ final class HomeApps {
     static final int APP = 0, LIVE_TV = 1, INPUT = 2, ALL_APPS = 3, SETTINGS = 4, ANDROID_SETTINGS = 5;
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
     static final int INPUTS = 7;
-    /** XGIMI projectors' buttons (Xgimi): auto focus, auto keystone, speaker mode. */
-    static final int FOCUS = 8, KEYSTONE = 9, SPEAKER = 10;
+    /** XGIMI projectors' buttons (Xgimi): auto focus, auto keystone, speaker mode, eco mode. */
+    static final int FOCUS = 8, KEYSTONE = 9, SPEAKER = 10, ECO = 11;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -217,7 +217,7 @@ final class HomeApps {
         return shortcut(SETTINGS, "settings", Ui.tr("Ajustes", "Settings"), "settings");
     }
 
-    /** Shortcuts in the bottom drawer (on XGIMI projectors, also focus, keystone and speaker mode). */
+    /** Shortcuts in the bottom drawer (on XGIMI projectors, also focus, keystone, speaker mode and eco mode). */
     static List<Item> drawerShortcuts(Context c) {
         List<Item> items = new ArrayList<>();
         items.add(shortcut(ALL_APPS, "all", Ui.tr("Todos os Apps", "All Apps"), "apps"));
@@ -228,6 +228,7 @@ final class HomeApps {
             items.add(shortcut(KEYSTONE, "keystone", Ui.tr("Ajuste Trapezoidal", "Auto Keystone"), "keystone"));
         }
         if (Xgimi.hasSpeaker(c)) items.add(shortcut(SPEAKER, "speaker", Ui.tr("Modo Caixa de Som", "Speaker Mode"), "speaker"));
+        if (Xgimi.hasEco()) items.add(shortcut(ECO, "eco", Ui.tr("Modo Econômico", "Eco Mode"), "eco"));
         return items;
     }
 
