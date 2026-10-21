@@ -13,7 +13,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Wi-Fi for XGIMI projectors, whose own Wi-Fi screen is Chinese only: networks nearby, connect with a password, forget.
+ * Wi-Fi for XGIMI projectors, whose own Wi-Fi screen is Chinese only, and the Rokid Station, whose own is deep in Rokid's
+ * Settings: networks nearby, connect with a password, forget.
  * Android gives apps no way to join a network, so this goes through the TV's own ADB (`cmd wifi`); the networks it adds
  * belong to the shell, which is never turned off (HomeMode.wifiOwners). Network names come from the air: each one goes
  * to the shell single-quoted, and names or passwords with control characters are refused.
@@ -46,6 +47,10 @@ final class Wifi {
         boolean enabled;
         String connected = "";
         final List<Network> networks = new ArrayList<>();
+    }
+
+    static boolean available() {
+        return HomeMode.XGIMI || HomeMode.ROKID;
     }
 
     private static final Pattern CONNECTED = Pattern.compile("Wifi is connected to \"(.*)\"");

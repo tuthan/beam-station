@@ -277,6 +277,7 @@ final class HomeMode {
             }
             busy(c, Ui.tr("Trocando o Início e a tela de descanso…", "Switching the home screen and screensaver…"));
             Watchdog.clear(c);
+            if (ROKID) rokidGrants(adb, true);
             check(adb.shell("cmd package set-home-activity " + HOME_ACTIVITY), "Success",
                     Ui.tr("o Android não aceitou o novo Início", "Android didn't accept the new home screen"));
             adb.shell("settings put secure screensaver_components " + DREAM);
@@ -360,6 +361,7 @@ final class HomeMode {
             record(adb, new HashSet<>(failed));
             busy(c, Ui.tr("Devolvendo o Início original…", "Restoring the original home screen…"));
             boolean homeOk = restoreHome(adb, home);
+            if (ROKID) rokidGrants(adb, false);
             restoreScreensaver(adb, s);
             try {
                 remoteService(c, adb, false);
@@ -386,6 +388,15 @@ final class HomeMode {
             ModeJob.schedule(c, ModeJob.MEMORY, ORIGINAL, 120_000);
         } catch (Exception e) {
             done(c, Ui.tr("Não deu para voltar ao original: ", "Couldn't go back to the original: ") + (Ui.ru ? Russian.text(e.getMessage() == null ? "" : e.getMessage()) : e.getMessage()));
+        }
+    }
+
+    /** Rokid Station: lets this app search for Bluetooth devices (Android 10+ ties that to location, never read here), or takes that back. */
+    private static void rokidGrants(Adb adb, boolean on) {
+        try {
+            adb.shell("pm " + (on ? "grant " : "revoke ") + PKG + " android.permission.ACCESS_FINE_LOCATION");
+        } catch (IOException e) {
+            AppLog.w("Rokid permissions: " + e.getMessage());
         }
     }
 
@@ -483,6 +494,7 @@ final class HomeMode {
                         fixed.add(pkg);
                     }
                 }
+                if (ROKID) rokidGrants(adb, true);
                 if (!reverted && !homeHolder(adb).contains(PKG)) {
                     adb.shell("cmd package set-home-activity " + HOME_ACTIVITY);
                     fixed.add(Ui.tr("o Início", "the home screen"));

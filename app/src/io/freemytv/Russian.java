@@ -25,6 +25,9 @@ final class Russian {
             case "Disconnect": return "Отключить";
             case "The sound goes back to the projector.": return "Звук вернётся на проектор.";
             case "Play the projector's sound on it.": return "Звук проектора пойдёт на него.";
+            case "The Station disconnects from it now.": return "Station сейчас отключится от неё.";
+            case "The sound goes back to the glasses.": return "Звук вернётся в очки.";
+            case "Play the Station's sound on it.": return "Звук Station пойдёт через него.";
             case "Forget this device": return "Забыть это устройство";
             case "Pair it again to use it.": return "Чтобы пользоваться, выполните сопряжение заново.";
             case "Paired with ": return "Сопряжено с ";

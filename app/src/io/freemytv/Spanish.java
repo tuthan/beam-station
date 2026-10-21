@@ -18,6 +18,9 @@ final class Spanish {
             case "Disconnect": return "Desconectar";
             case "The sound goes back to the projector.": return "El sonido vuelve al proyector.";
             case "Play the projector's sound on it.": return "El sonido del proyector sale por él.";
+            case "The Station disconnects from it now.": return "La Station se desconecta de ella ahora.";
+            case "The sound goes back to the glasses.": return "El sonido vuelve a las gafas.";
+            case "Play the Station's sound on it.": return "El sonido de la Station sale por él.";
             case "Forget this device": return "Olvidar este dispositivo";
             case "Pair it again to use it.": return "Para usarlo, vincúlalo de nuevo.";
             case "Paired with ": return "Vinculado con ";
