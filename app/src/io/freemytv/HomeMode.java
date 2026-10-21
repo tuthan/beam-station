@@ -83,6 +83,13 @@ final class HomeMode {
     /** XGIMI projectors, where the Wi-Fi screen was made (their own is Chinese only). */
     static final boolean XGIMI = "XGIMI".equalsIgnoreCase(Build.BRAND);
 
+    /**
+     * Rokid Station (the box for Rokid's AR glasses): its ROM refuses `pm disable-user` for every system app, so nothing
+     * is turned off; Free My TV only takes the home screen. Rokid's launcher stays on and keeps HOME away from us through
+     * plugging the glasses and a reboot (tested). Its apps share the system UID, as on XGIMI.
+     */
+    static final boolean ROKID = "Rokid".equalsIgnoreCase(Build.BRAND);
+
     /** The voice assistant, only with disable_assistant=true in config.properties (the mic button stops working). */
     static final String[] ASSISTANT = {"com.google.android.katniss", "com.android.hotwordenrollment.okgoogle"};
 
@@ -138,7 +145,12 @@ final class HomeMode {
         "com.fengmi.projector.imaging", "com.fengmi.platform", "com.fengmi.Autopair", "com.fengmi.fmsettings",
         "com.fengmi.testsuite", "android.autoinstalls.config.fomovie",
         "uk.co.freeview.tifbridge",
-        "uk.co.freeview.mdsclient", "uk.co.freeview.fvpconfigauth"));
+        "uk.co.freeview.mdsclient", "uk.co.freeview.fvpconfigauth",
+        // Rokid Station (Amlogic): launcher, cursor and quick menu, system config, settings, box and glasses updates,
+        // casting, setup, voice, gateway, licence page
+        "com.rokid.glass.er.launcher", "com.rokid.glass.er.assistserver", "com.rokid.sysconfig", "com.rokid.erbox.settings",
+        "com.rokid.glass.ota", "com.rokid.glass.firmware.upgrade", "com.rokid.erbox.projector", "com.rokid.erbox.provision",
+        "com.rokid.os.voice", "com.rokid.vgateway", "com.rokid.erbox.webview", "com.droidlogic", "com.droidlogic.miracast"));
 
     /** One switch at a time (jobs can overlap: a boot check and a button press). */
     private static final Object RUN = new Object();
@@ -499,10 +511,12 @@ final class HomeMode {
 
     /**
      * What to turn off: the TV's own home screen and screensaver, Google TV's recovery home (when setupHome: the setup
-     * app is one of the TV's home screens), and the lists above.
+     * app is one of the TV's home screens), and the lists above. Nothing on Rokid: its ROM wouldn't let us, and the
+     * generic list would still reach apps the person installed there (YouTube Music).
      */
     private static List<String> targets(String home, String dream, boolean setupHome) {
         List<String> out = new ArrayList<>();
+        if (ROKID) return out;
         String homePkg = packageOf(home);
         if (homePkg != null && !homePkg.equals(PKG)) out.add(homePkg);
         if (TV_LAUNCHER.equals(homePkg)) out.add(TV_RECOMMENDATIONS);
