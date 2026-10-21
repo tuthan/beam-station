@@ -147,7 +147,12 @@ Rokid Station (the Android 11 box for Rokid's AR glasses, Amlogic): its ROM refu
 off there and only takes the home screen; Rokid's launcher stays on (HOME stays ours through a glasses replug and a
 reboot). *TV Settings* opens Rokid's Settings. Taking the glasses off puts the box to sleep and drops Wi-Fi and ADB:
 keep them on (or the proximity sensor covered) while you work from the computer. The glasses' 2D/3D, refresh rate,
-scene and speaker mode are Rokid's `rokid_display` service (`adb shell dumpsys rokid_display`).
+scene and speaker mode are Rokid's `rokid_display` service (`adb shell dumpsys rokid_display`); `Rokid` calls it over
+the binder (the Station's SELinux is permissive) or else the TV's ADB, and the settings' Glasses page and the drawer's
+2D/3D button use it. A new mode or refresh rate retrains HDMI for about 3 s: read back only once the glasses return.
+The Station runs on a battery: `Power` shows it on the home screen and keeps the screensaver and sleep timeouts
+(`settings put` over the TV's ADB) and a sleep timer, since Rokid's Settings has neither. Wi-Fi and Bluetooth use the
+XGIMI screens.
 
 LG and Samsung: the web app above. Other TVs that don't run Google TV or Android TV: the way is a Google TV streamer on
 HDMI (Chromecast with Google TV, Google TV Streamer, onn 4K, NVIDIA Shield). Set Free My TV up on the streamer.
