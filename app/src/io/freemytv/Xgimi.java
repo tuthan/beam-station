@@ -23,7 +23,7 @@ import java.util.function.Consumer;
 
 /**
  * XGIMI projectors: auto focus, auto keystone and speaker mode through XGIMI's own services (exported, with no
- * permission), the Play 6's battery and eco mode, and the system language. XGIMI's screens are Chinese only, and its Settings switches the system to
+ * permission), the Play 6's battery, eco mode and corrections after a move, and the system language. XGIMI's screens are Chinese only, and its Settings switches the system to
  * Chinese each time it opens, with a notice whose OK closes the panel. So in Free My TV mode the system language
  * follows Free My TV's: Chinese just before XGIMI's panel opens (no notice), ours again when our windows get focus back.
  */
@@ -175,6 +175,58 @@ final class Xgimi {
             Boolean result = on;
             MAIN.post(() -> done.accept(result));
         });
+    }
+
+    // MARK: - When the projector moves
+
+    /**
+     * What the Play 6 does when it's moved: square the picture again (XGIMI's "real-time picture correction") and
+     * focus it again ("smart auto focus"). XGIMI's own calibration screens turn the first off while they run.
+     */
+    static final class Moves {
+        boolean keystone, focus;
+    }
+
+    /** Now, or null where it can't be read. Blocks briefly: not on the UI thread. */
+    static Moves moves() {
+        if (!PLAY_6) return null;
+        try {
+            Object motion = platform("com.xgimi.gmpf.api.MotionDetectionManager");
+            Moves m = new Moves();
+            m.keystone = (Boolean) call(motion, "getAccTriggerAK");
+            m.focus = (Boolean) call(motion, "getAngTriggerAF");
+            return m;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            AppLog.w("moves: " + e);
+            return null;
+        }
+    }
+
+    /** Keystone after a move, on or off. On, the picture is also squared now (XGIMI starts from a reset picture). */
+    static Moves setMoveKeystone(Context c, boolean on) {
+        try {
+            Object motion = platform("com.xgimi.gmpf.api.MotionDetectionManager");
+            motion.getClass().getMethod("setAccTriggerAK", boolean.class).invoke(motion, on);
+            AppLog.w("keystone when moved " + (on ? "on" : "off"));
+            if (on) autoKeystone(c);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            AppLog.w("keystone when moved: " + e);
+        }
+        return moves();
+    }
+
+    /** Focus after a move, on or off: the two switches XGIMI's "smart auto focus" sets together. */
+    static Moves setMoveFocus(boolean on) {
+        try {
+            Object motion = platform("com.xgimi.gmpf.api.MotionDetectionManager");
+            motion.getClass().getMethod("setAngTriggerAF", boolean.class).invoke(motion, on);
+            Object focus = platform("com.xgimi.gmpf.api.ProjectorFocusManager");
+            focus.getClass().getMethod("setPowerOnAFUseDistance", boolean.class).invoke(focus, on);
+            AppLog.w("focus when moved " + (on ? "on" : "off"));
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            AppLog.w("focus when moved: " + e);
+        }
+        return moves();
     }
 
     private static Object platform(String manager) throws ReflectiveOperationException {

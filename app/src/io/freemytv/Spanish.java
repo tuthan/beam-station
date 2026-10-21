@@ -61,6 +61,12 @@ final class Spanish {
             case "Eco mode isn't available right now.": return "El modo ahorro no está disponible ahora.";
             case "Eco mode is on: less brightness and sound, more battery.": return "Modo ahorro activado: menos brillo y sonido, más batería.";
             case "Eco mode is off.": return "Modo ahorro desactivado.";
+            case "Auto keystone when moved": return "Corregir la imagen al moverlo";
+            case "Auto focus when moved": return "Enfocar al moverlo";
+            case "Squaring the picture…": return "Corrigiendo la imagen…";
+            case "Time Zone": return "Zona Horaria";
+            case "Couldn't change it": return "No se pudo cambiar";
+            case "your city": return "tu ciudad";
             case "Picture": return "Imagen";
             case "Picture mode": return "Modo de imagen";
             case "Motion smoothing": return "Suavizado de movimiento";

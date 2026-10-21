@@ -129,8 +129,8 @@ public class SettingsActivity extends Activity {
     static final class SettingsView extends View implements Choreographer.FrameCallback {
         private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5,
                 WIFI = 6, WIFI_FORGET = 7, BT = 8, BT_DEVICE = 9, PICTURE = 10;
-        /** The main screen's rows (Remote Buttons, TV Settings, Wi-Fi, Bluetooth, Picture), shown in the order of mainRows(). */
-        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6, BT_ROW = 7, PICTURE_ROW = 8;
+        /** The main screen's rows (Remote Buttons, TV Settings, Wi-Fi, Bluetooth, Picture, Time Zone), shown in the order of mainRows(). */
+        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6, BT_ROW = 7, PICTURE_ROW = 8, ZONE_ROW = 9;
         private static final String[] WIFI_BARS = {"wifi_1", "wifi_1", "wifi_2", "wifi_3", "wifi_4"};
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
@@ -148,7 +148,11 @@ public class SettingsActivity extends Activity {
         private final List<String[]> shelfRows = new ArrayList<>();
         private final List<String> shelfOrder = new ArrayList<>();
         private int pickFor, pickCurrent, pickScroll;   // pickFor: the remote button (index + 1)
-        private static final int PICK_CITY = 0;
+        private static final int PICK_CITY = 0, PICK_ZONE = -1;
+        // Time Zone (XGIMI projectors): the zones the picker lists (the city's first), and the one being set.
+        private final List<String> zones = new ArrayList<>();
+        private String cityZone, zoneSetting;   // cityZone: the city's, from its forecast (null if not known yet)
+        private boolean zoneFailed;
         private final List<String[]> cities = new ArrayList<>();
         private String cityStatus = "";
         private final RectF tmp = new RectF(), rowRect = new RectF(), focusBox = new RectF();
@@ -169,8 +173,9 @@ public class SettingsActivity extends Activity {
         private boolean btSearching, btListening;
         private String btLine = "";
         private BluetoothProfile a2dp;
-        // Picture (XGIMI's Play 6): the projector's settings (null until read), and a change on its way.
+        // Picture (XGIMI's Play 6): the projector's settings and what a move does (null until read), and a change on its way.
         private Picture.State picture;
+        private Xgimi.Moves moves;
         private String pictureLine = "";
         private int pictureChanges;   // changes on their way: only the last one's answer is shown
         private final ExecutorService work = Executors.newSingleThreadExecutor();   // ADB and Bluetooth calls
@@ -294,6 +299,7 @@ public class SettingsActivity extends Activity {
                     if (mainRow(row) == WIFI_ROW) return Ui.tr("Wi-Fi", "Wi-Fi") + ", " + wifiSummary();
                     if (mainRow(row) == BT_ROW) return "Bluetooth" + (btSummary().isEmpty() ? "" : ", " + btSummary());
                     if (mainRow(row) == PICTURE_ROW) return Ui.tr("Imagem", "Picture") + (pictureSummary().isEmpty() ? "" : ", " + pictureSummary());
+                    if (mainRow(row) == ZONE_ROW) return Ui.tr("Fuso Horário", "Time Zone") + ", " + zoneSummary();
                     String[] names = {Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview"), Ui.tr("Ajustes do Início", "Home Settings"),
                             Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings")};
                     int at = mainRow(row) - 1;
@@ -447,22 +453,23 @@ public class SettingsActivity extends Activity {
             return HomeMode.FREE.equals(state.optString("mode")) && !state.optBoolean("homeReverted");
         }
 
-        /** Remote Buttons only where the remote's buttons can be reached; Picture, Wi-Fi and Bluetooth on XGIMI projectors, before TV Settings. */
+        /** Remote Buttons only where the remote's buttons can be reached; Picture, Wi-Fi, Bluetooth and Time Zone on XGIMI projectors, before TV Settings. */
         private static int[] mainRows() {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
             if (RemoteKeys.supported()) rows.add(REMOTE_ROW);
             if (Picture.available()) rows.add(PICTURE_ROW);
             if (HomeMode.XGIMI) rows.add(WIFI_ROW);
             if (Bluetooth.available()) rows.add(BT_ROW);
+            if (HomeMode.XGIMI) rows.add(ZONE_ROW);
             rows.add(TV_ROW);
             int[] out = new int[rows.size()];
             for (int i = 0; i < out.length; i++) out[i] = rows.get(i);
             return out;
         }
 
-        /** Where the main screen's rows start: higher past seven rows, so what's under them (the TMDB credit) stays on screen. */
+        /** Where the main screen's rows start: one row higher past seven rows, so what's under them (the TMDB credit) stays on screen. */
         private float mainTop() {
-            return LIST_TOP - Math.max(0, mainRows.length - 7) * (ROW_H + ROW_GAP);
+            return LIST_TOP - Math.min(1, Math.max(0, mainRows.length - 7)) * (ROW_H + ROW_GAP);
         }
 
         /** The main screen's row at position i. */
@@ -528,9 +535,9 @@ public class SettingsActivity extends Activity {
             String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Tela de Descanso", "Screensaver"),
                     Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Prateleira", "Shelf"),
                     Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi"), "Bluetooth",
-                    Ui.tr("Imagem", "Picture")};
+                    Ui.tr("Imagem", "Picture"), Ui.tr("Fuso Horário", "Time Zone")};
             String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", HomeMode.XGIMI ? wifiSummary() : "", btSummary(),
-                    pictureSummary()};
+                    pictureSummary(), HomeMode.XGIMI ? zoneSummary() : ""};
             for (int i = 0; i < rowCount(); i++) {
                 int row = mainRow(i);
                 float y = (mainTop() + i * (ROW_H + ROW_GAP)) * k;
@@ -584,7 +591,7 @@ public class SettingsActivity extends Activity {
                 c.restore();
                 y += errorLayout.getLineBaseline(errorLayout.getLineCount() - 1) - errorLayout.getLineBaseline(0) + 46 * k;
             }
-            y = drawComparison(c, y);
+            if (mainRows.length <= 8) y = drawComparison(c, y);   // past eight rows, no room for it
             y = drawRecs(c, y + 26 * k);
             drawNotices(c, y + 40 * k);
         }
@@ -768,6 +775,9 @@ public class SettingsActivity extends Activity {
                             if (screen == PICKER && pickFor == PICK_CITY) {
                                 focus = CITY_ROW;
                                 screen = HOME_SETTINGS;
+                            } else if (screen == PICKER && pickFor == PICK_ZONE) {
+                                focus = mainIndex(ZONE_ROW);
+                                screen = MAIN;
                             } else if (screen == PICKER) {
                                 focus = pickFor - 1;
                                 screen = REMOTE_KEYS;
@@ -1019,24 +1029,48 @@ public class SettingsActivity extends Activity {
             return picture == null || Picture.indexOf(Picture.MODES, picture.mode) < 0 ? "" : modeName(picture.mode);
         }
 
-        /** Picture mode, HDR, and motion smoothing in the modes that have it (as in XGIMI's menu). */
+        /** The Picture screen's rows: picture mode, HDR, motion smoothing in the modes that have it (as in XGIMI's menu), then what a move does. */
+        private static final int P_MODE = 0, P_HDR = 1, P_MOTION = 2, P_MOVE_KEYSTONE = 3, P_MOVE_FOCUS = 4;
+
+        private int[] pictureRows() {
+            List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(P_MODE, P_HDR));
+            if (picture != null && picture.hasMotion()) rows.add(P_MOTION);
+            if (moves != null) {
+                rows.add(P_MOVE_KEYSTONE);
+                rows.add(P_MOVE_FOCUS);
+            }
+            int[] out = new int[rows.size()];
+            for (int i = 0; i < out.length; i++) out[i] = rows.get(i);
+            return out;
+        }
+
         private String[] pictureLabels() {
-            List<String> l = new ArrayList<>();
-            l.add(Ui.tr("Modo de imagem", "Picture mode"));
-            l.add("HDR");
-            if (picture != null && picture.hasMotion()) l.add(Ui.tr("Suavização de movimento", "Motion smoothing"));
-            return l.toArray(new String[0]);
+            int[] rows = pictureRows();
+            String[] l = new String[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                switch (rows[i]) {
+                    case P_MODE: l[i] = Ui.tr("Modo de imagem", "Picture mode"); break;
+                    case P_HDR: l[i] = "HDR"; break;
+                    case P_MOTION: l[i] = Ui.tr("Suavização de movimento", "Motion smoothing"); break;
+                    case P_MOVE_KEYSTONE: l[i] = Ui.tr("Corrigir a imagem ao mover", "Auto keystone when moved"); break;
+                    default: l[i] = Ui.tr("Focar ao mover", "Auto focus when moved"); break;
+                }
+            }
+            return l;
         }
 
         private String[] pictureValues() {
-            String[] v = new String[pictureLabels().length];
-            if (picture == null) {
-                java.util.Arrays.fill(v, "—");
-                return v;
+            int[] rows = pictureRows();
+            String[] v = new String[rows.length];
+            for (int i = 0; i < rows.length; i++) {
+                switch (rows[i]) {
+                    case P_MODE: v[i] = picture == null ? "—" : modeName(picture.mode); break;
+                    case P_HDR: v[i] = picture == null ? "—" : picture.hdr ? Ui.tr("Automático", "Automatic") : Ui.tr("Desligado", "Off"); break;
+                    case P_MOTION: v[i] = motionName(picture.motion); break;
+                    case P_MOVE_KEYSTONE: v[i] = onOff(moves.keystone); break;
+                    default: v[i] = onOff(moves.focus); break;
+                }
             }
-            v[0] = modeName(picture.mode);
-            v[1] = picture.hdr ? Ui.tr("Automático", "Automatic") : Ui.tr("Desligado", "Off");
-            if (v.length > 2) v[2] = motionName(picture.motion);
             return v;
         }
 
@@ -1045,10 +1079,12 @@ public class SettingsActivity extends Activity {
             Context app = getContext().getApplicationContext();
             work.execute(() -> {
                 Picture.State s = Picture.read(app);
+                Xgimi.Moves m = Xgimi.moves();
                 handler.post(() -> {
                     if (pictureChanges > 0) return;
                     if (s != null) picture = s;
                     else pictureLine = Ui.tr("Não deu para ler os ajustes de imagem do projetor.", "Couldn't read the projector's picture settings.");
+                    if (m != null) moves = m;
                     if (screen == PICTURE && focus >= rowCount()) focus = rowCount() - 1;
                     invalidate();
                 });
@@ -1057,19 +1093,27 @@ public class SettingsActivity extends Activity {
 
         /** The focused row one step on: shown at once, then what the projector took (a mode brings its own HDR and motion). */
         private void adjustPicture(int dir) {
-            if (picture == null || pictureChanges >= 3) return;   // a held arrow doesn't queue a long run of changes
+            if (pictureChanges >= 3) return;   // a held arrow doesn't queue a long run of changes
+            int[] rows = pictureRows();
+            if (focus >= rows.length) return;
+            int row = rows[focus];
+            if (row == P_MOVE_KEYSTONE || row == P_MOVE_FOCUS) {
+                toggleMove(row);
+                return;
+            }
+            if (picture == null) return;
             Picture.State p = picture;
-            int row = focus, want;
+            int want;
             switch (row) {
-                case 0: want = p.mode = nextValue(Picture.MODES, p.mode, dir); break;
-                case 1: want = (p.hdr = !p.hdr) ? 1 : 0; break;
+                case P_MODE: want = p.mode = nextValue(Picture.MODES, p.mode, dir); break;
+                case P_HDR: want = (p.hdr = !p.hdr) ? 1 : 0; break;
                 default: want = p.motion = nextValue(Picture.MOTION, p.motion, dir); break;
             }
             pictureChanges++;
             pictureLine = "";
             Context app = getContext().getApplicationContext();
             work.execute(() -> {
-                Picture.State now = row == 0 ? Picture.setMode(app, want) : row == 1 ? Picture.setHdr(app, want == 1)
+                Picture.State now = row == P_MODE ? Picture.setMode(app, want) : row == P_HDR ? Picture.setHdr(app, want == 1)
                         : Picture.setMotion(app, want);
                 handler.post(() -> {
                     if (--pictureChanges > 0) return;
@@ -1077,7 +1121,7 @@ public class SettingsActivity extends Activity {
                         pictureLine = Ui.tr("Não deu para ler os ajustes de imagem do projetor.", "Couldn't read the projector's picture settings.");
                     } else {
                         picture = now;
-                        int got = row == 0 ? now.mode : row == 1 ? (now.hdr ? 1 : 0) : now.motion;
+                        int got = row == P_MODE ? now.mode : row == P_HDR ? (now.hdr ? 1 : 0) : now.motion;
                         if (got != want) pictureLine = Ui.tr("O projetor não aceitou essa mudança.", "The projector didn't take that change.");
                     }
                     if (screen == PICTURE && focus >= rowCount()) focus = rowCount() - 1;
@@ -1086,9 +1130,74 @@ public class SettingsActivity extends Activity {
             });
         }
 
+        /** Keystone or focus after a move, on or off (turning keystone on squares the picture now too). */
+        private void toggleMove(int row) {
+            boolean keystone = row == P_MOVE_KEYSTONE;
+            boolean want = keystone ? (moves.keystone = !moves.keystone) : (moves.focus = !moves.focus);
+            pictureChanges++;
+            pictureLine = keystone && want ? Ui.tr("Corrigindo a imagem…", "Squaring the picture…") : "";
+            Context app = getContext().getApplicationContext();
+            work.execute(() -> {
+                Xgimi.Moves now = keystone ? Xgimi.setMoveKeystone(app, want) : Xgimi.setMoveFocus(want);
+                handler.post(() -> {
+                    if (--pictureChanges > 0) return;
+                    if (now != null) moves = now;
+                    boolean got = now != null && (keystone ? now.keystone : now.focus);
+                    pictureLine = got != want ? Ui.tr("O projetor não aceitou essa mudança.", "The projector didn't take that change.") : "";
+                    invalidate();
+                });
+            });
+        }
+
         private static int nextValue(int[] values, int now, int dir) {
             int at = Picture.indexOf(values, now);
             return values[at < 0 ? (dir > 0 ? 0 : values.length - 1) : (at + dir + values.length) % values.length];
+        }
+
+        // MARK: - Time Zone (XGIMI projectors)
+
+        private static String currentZone() {
+            return java.util.TimeZone.getDefault().getID();
+        }
+
+        /** The main row's value: the zone in use, the one being set, or that it didn't work. */
+        private String zoneSummary() {
+            if (zoneFailed) return Ui.tr("Não deu para mudar", "Couldn't change it");
+            return Zones.label(zoneSetting != null ? zoneSetting : currentZone());
+        }
+
+        /** Every zone, the city's first, the one in use checked. */
+        private void openZones() {
+            zoneFailed = false;
+            String city = HomeData.get(getContext()).weather.zone;
+            cityZone = Zones.known(city) ? city : null;
+            zones.clear();
+            if (cityZone != null) zones.add(cityZone);
+            zones.addAll(Zones.all());
+            openPicker(PICK_ZONE);
+        }
+
+        private void setZone(String id) {
+            if (id.equals(currentZone()) || zoneSetting != null) return;
+            zoneSetting = id;
+            Context app = getContext().getApplicationContext();
+            work.execute(() -> {
+                boolean ok;
+                try {
+                    Zones.set(app, id);
+                    ok = true;
+                } catch (IOException | RuntimeException e) {
+                    AppLog.w("time zone: " + e);
+                    ok = false;
+                }
+                boolean set = ok;
+                handler.post(() -> {
+                    if (set) java.util.TimeZone.setDefault(null);   // reads the new one now, before the system's broadcast gets here
+                    zoneSetting = null;
+                    zoneFailed = !set;
+                    invalidate();
+                });
+            });
         }
 
         // MARK: - Wi-Fi (XGIMI projectors)
@@ -1663,15 +1772,22 @@ public class SettingsActivity extends Activity {
         private void openPicker(int which) {
             pickFor = which;
             pickLabels.clear();
+            int start = -1;   // where the focus starts (the one in use, if not given)
             if (which == PICK_CITY) {
                 for (String[] city : cities) pickLabels.add(city[0]);
                 pickCurrent = -1;
+            } else if (which == PICK_ZONE) {
+                String now = currentZone();
+                for (String id : zones) pickLabels.add(Zones.label(id));
+                if (cityZone != null) pickLabels.set(0, pickLabels.get(0) + "  ·  " + Ui.tr("sua cidade", "your city"));
+                pickCurrent = zones.indexOf(now);
+                if (cityZone != null && !cityZone.equals(now)) start = 0;   // the city's zone, first, is what they likely want
             } else {
                 pickLabels.addAll(appLabels);
                 pickCurrent = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[which - 1]));
             }
             int visible = Math.min(PICK_VISIBLE, pickLabels.size());
-            int at = Math.max(0, pickCurrent);
+            int at = start >= 0 ? start : Math.max(0, pickCurrent);
             pickScroll = Math.max(0, Math.min(at - 3, pickLabels.size() - visible));
             focus = at - pickScroll;
             screen = PICKER;
@@ -1680,7 +1796,8 @@ public class SettingsActivity extends Activity {
         /** A long list (the apps): nine rows at a time, the one in use checked. */
         private void drawPicker(Canvas c) {
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            String title = pickFor == PICK_CITY ? Ui.tr("Cidade", "City") : keyLabels()[pickFor - 1];
+            String title = pickFor == PICK_CITY ? Ui.tr("Cidade", "City") : pickFor == PICK_ZONE ? Ui.tr("Fuso Horário", "Time Zone")
+                    : keyLabels()[pickFor - 1];
             c.drawText(title, LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             int rows = rowCount();
             for (int i = 0; i < rows; i++) {
@@ -1778,6 +1895,10 @@ public class SettingsActivity extends Activity {
                 }
                 screen = MAIN;
                 focus = 0;
+            } else if (screen == PICKER && pickFor == PICK_ZONE) {
+                setZone(zones.get(pickScroll + focus));
+                focus = mainIndex(ZONE_ROW);
+                screen = MAIN;
             } else if (screen == PICKER && pickFor == PICK_CITY) {
                 String[] city = cities.get(pickScroll + focus);
                 Prefs.setCity(city[1], city[2], city[3]);
@@ -1828,6 +1949,8 @@ public class SettingsActivity extends Activity {
                 btLine = "";
                 btFound.clear();
                 openBt();
+            } else if (mainRow(focus) == ZONE_ROW) {
+                openZones();
             } else if (mainRow(focus) == PICTURE_ROW) {
                 screen = PICTURE;
                 focus = 0;

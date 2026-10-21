@@ -62,6 +62,12 @@ final class German {
             case "Eco mode isn't available right now.": return "Der Eco-Modus ist gerade nicht verfügbar.";
             case "Eco mode is on: less brightness and sound, more battery.": return "Eco-Modus an: weniger Helligkeit und Ton, mehr Akku.";
             case "Eco mode is off.": return "Eco-Modus aus.";
+            case "Auto keystone when moved": return "Trapezkorrektur nach Bewegen";
+            case "Auto focus when moved": return "Fokus nach Bewegen";
+            case "Squaring the picture…": return "Bild wird ausgerichtet…";
+            case "Time Zone": return "Zeitzone";
+            case "Couldn't change it": return "Ließ sich nicht ändern";
+            case "your city": return "deine Stadt";
             case "Picture": return "Bild";
             case "Picture mode": return "Bildmodus";
             case "Motion smoothing": return "Bewegungsglättung";

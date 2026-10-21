@@ -419,6 +419,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         updatePicks();
         if (sheetOpen) closeSheet();
         sheet.snap(sheet.target);
+        clockMinute = -1;   // the time zone may have changed meanwhile (Time Zone, on XGIMI projectors)
         motionDirty = true;
         invalidateAll();
         idle = false;

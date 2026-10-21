@@ -118,6 +118,7 @@ final class HomeData {
         int code = -1;
         boolean isDay = true;
         long sunrise, sunset;   // today's, in epoch ms
+        String zone = "";       // the city's time zone (Olson id), as the forecast gives it
         // Next hours (starting at the next full hour): time, temperature, code and day/night.
         final List<Long> hours = new ArrayList<>();
         final List<Double> hourTemp = new ArrayList<>();
@@ -246,6 +247,7 @@ final class HomeData {
         JSONObject o = new JSONObject(body);
         TimeZone zone = TimeZone.getTimeZone(o.optString("timezone", TimeZone.getDefault().getID()));
         Weather w = new Weather();
+        w.zone = o.optString("timezone", "");
         JSONObject current = o.getJSONObject("current");
         w.temp = current.getDouble("temperature_2m");
         w.code = current.getInt("weather_code");

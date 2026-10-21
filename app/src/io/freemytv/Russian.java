@@ -68,6 +68,12 @@ final class Russian {
             case "Eco mode isn't available right now.": return "Эко-режим сейчас недоступен.";
             case "Eco mode is on: less brightness and sound, more battery.": return "Эко-режим включён: меньше яркости и звука, дольше от батареи.";
             case "Eco mode is off.": return "Эко-режим выключен.";
+            case "Auto keystone when moved": return "Коррекция трапеции при перемещении";
+            case "Auto focus when moved": return "Фокус при перемещении";
+            case "Squaring the picture…": return "Выравниваю изображение…";
+            case "Time Zone": return "Часовой пояс";
+            case "Couldn't change it": return "Не удалось изменить";
+            case "your city": return "ваш город";
             case "Picture": return "Изображение";
             case "Picture mode": return "Режим изображения";
             case "Motion smoothing": return "Сглаживание движения";
