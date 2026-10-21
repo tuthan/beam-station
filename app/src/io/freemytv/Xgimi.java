@@ -24,7 +24,7 @@ import java.util.function.Consumer;
 
 /**
  * XGIMI projectors: auto focus, auto keystone, speaker mode and HDMI through XGIMI's own services (exported, with no
- * permission), the Play 6's battery, eco mode and corrections after a move, and the system language. XGIMI's screens are Chinese only, and its Settings switches the system to
+ * permission), the Play 6's battery, eco mode, corrections after a move and HDMI game mode, and the system language. XGIMI's screens are Chinese only, and its Settings switches the system to
  * Chinese each time it opens, with a notice whose OK closes the panel. So in Free My TV mode the system language
  * follows Free My TV's: Chinese just before XGIMI's panel opens (no notice), ours again when our windows get focus back.
  */
@@ -237,6 +237,46 @@ final class Xgimi {
             AppLog.w("focus when moved: " + e);
         }
         return moves();
+    }
+
+    /** HDMI game mode, as XGIMI's HDMI menu sets it; auto turns it on when XGIMI recognizes a console. */
+    static final int GAME_OFF = 0, GAME_ON = 1, GAME_AUTO = 2;
+
+    /** Now, or -1 where it can't be read: XGIMI keeps a type (1: auto) and a state (0: on, 1: off). Not on the UI thread. */
+    static int gameMode() {
+        if (!PLAY_6) return -1;
+        try {
+            Object display = platform("com.xgimi.gmpf.api.DisplayManager");
+            Object prop = Class.forName("com.xgimi.gmpf.rp.GameModeProp").getConstructor().newInstance();
+            if (!(Boolean) display.getClass().getMethod("getGameModeProp", prop.getClass()).invoke(display, prop)) return -1;
+            int type = prop.getClass().getField("type").getInt(prop), state = prop.getClass().getField("state").getInt(prop);
+            return type == 1 ? GAME_AUTO : state == 0 ? GAME_ON : GAME_OFF;
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            AppLog.w("game mode: " + e);
+            return -1;
+        }
+    }
+
+    /** The calls XGIMI's own menu makes (turning it on applies the latency option again); returns what it reads after. */
+    static int setGameMode(int mode) {
+        try {
+            Object display = platform("com.xgimi.gmpf.api.DisplayManager");
+            java.lang.reflect.Method type = display.getClass().getMethod("setGameModeType", int.class);
+            java.lang.reflect.Method state = display.getClass().getMethod("setGameModeState", int.class);
+            if (mode == GAME_AUTO) {
+                type.invoke(display, 1);
+            } else {
+                if (mode == GAME_ON) {
+                    display.getClass().getMethod("setGameModeOption", int.class).invoke(display, call(display, "getGameModeOption"));
+                }
+                type.invoke(display, 0);
+                state.invoke(display, mode == GAME_ON ? 0 : 1);
+            }
+            AppLog.w("game mode " + mode);
+        } catch (ReflectiveOperationException | RuntimeException | LinkageError e) {
+            AppLog.w("game mode: " + e);
+        }
+        return gameMode();
     }
 
     private static Object platform(String manager) throws ReflectiveOperationException {

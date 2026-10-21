@@ -74,6 +74,8 @@ final class Russian {
             case "Time Zone": return "Часовой пояс";
             case "Couldn't change it": return "Не удалось изменить";
             case "your city": return "ваш город";
+            case "Game mode (HDMI)": return "Игровой режим (HDMI)";
+            case "Game mode turns on by itself when the projector recognizes a console.": return "Игровой режим включается сам, когда проектор распознаёт консоль.";
             case "Picture": return "Изображение";
             case "Picture mode": return "Режим изображения";
             case "Motion smoothing": return "Сглаживание движения";

@@ -176,6 +176,7 @@ public class SettingsActivity extends Activity {
         // Picture (XGIMI's Play 6): the projector's settings and what a move does (null until read), and a change on its way.
         private Picture.State picture;
         private Xgimi.Moves moves;
+        private int game = -1;   // HDMI game mode (Xgimi.GAME_*), -1 until read
         private String pictureLine = "";
         private int pictureChanges;   // changes on their way: only the last one's answer is shown
         private final ExecutorService work = Executors.newSingleThreadExecutor();   // ADB and Bluetooth calls
@@ -1029,12 +1030,14 @@ public class SettingsActivity extends Activity {
             return picture == null || Picture.indexOf(Picture.MODES, picture.mode) < 0 ? "" : modeName(picture.mode);
         }
 
-        /** The Picture screen's rows: picture mode, HDR, motion smoothing in the modes that have it (as in XGIMI's menu), then what a move does. */
-        private static final int P_MODE = 0, P_HDR = 1, P_MOTION = 2, P_MOVE_KEYSTONE = 3, P_MOVE_FOCUS = 4;
+        /** The Picture screen's rows: picture mode, HDR, motion smoothing in the modes that have it (as in XGIMI's menu), HDMI game mode, then what a move does. */
+        private static final int P_MODE = 0, P_HDR = 1, P_MOTION = 2, P_MOVE_KEYSTONE = 3, P_MOVE_FOCUS = 4, P_GAME = 5;
+        private static final int[] GAME_MODES = {Xgimi.GAME_OFF, Xgimi.GAME_ON, Xgimi.GAME_AUTO};
 
         private int[] pictureRows() {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(P_MODE, P_HDR));
             if (picture != null && picture.hasMotion()) rows.add(P_MOTION);
+            if (game >= 0) rows.add(P_GAME);
             if (moves != null) {
                 rows.add(P_MOVE_KEYSTONE);
                 rows.add(P_MOVE_FOCUS);
@@ -1052,6 +1055,7 @@ public class SettingsActivity extends Activity {
                     case P_MODE: l[i] = Ui.tr("Modo de imagem", "Picture mode"); break;
                     case P_HDR: l[i] = "HDR"; break;
                     case P_MOTION: l[i] = Ui.tr("Suavização de movimento", "Motion smoothing"); break;
+                    case P_GAME: l[i] = Ui.tr("Modo jogo (HDMI)", "Game mode (HDMI)"); break;
                     case P_MOVE_KEYSTONE: l[i] = Ui.tr("Corrigir a imagem ao mover", "Auto keystone when moved"); break;
                     default: l[i] = Ui.tr("Focar ao mover", "Auto focus when moved"); break;
                 }
@@ -1067,6 +1071,7 @@ public class SettingsActivity extends Activity {
                     case P_MODE: v[i] = picture == null ? "—" : modeName(picture.mode); break;
                     case P_HDR: v[i] = picture == null ? "—" : picture.hdr ? Ui.tr("Automático", "Automatic") : Ui.tr("Desligado", "Off"); break;
                     case P_MOTION: v[i] = motionName(picture.motion); break;
+                    case P_GAME: v[i] = game == Xgimi.GAME_AUTO ? Ui.tr("Automático", "Automatic") : onOff(game == Xgimi.GAME_ON); break;
                     case P_MOVE_KEYSTONE: v[i] = onOff(moves.keystone); break;
                     default: v[i] = onOff(moves.focus); break;
                 }
@@ -1080,9 +1085,11 @@ public class SettingsActivity extends Activity {
             work.execute(() -> {
                 Picture.State s = Picture.read(app);
                 Xgimi.Moves m = Xgimi.moves();
+                int g = Xgimi.gameMode();
                 handler.post(() -> {
                     if (pictureChanges > 0) return;
                     if (s != null) picture = s;
+                    if (g >= 0) game = g;
                     else pictureLine = Ui.tr("Não deu para ler os ajustes de imagem do projetor.", "Couldn't read the projector's picture settings.");
                     if (m != null) moves = m;
                     if (screen == PICTURE && focus >= rowCount()) focus = rowCount() - 1;
@@ -1099,6 +1106,10 @@ public class SettingsActivity extends Activity {
             int row = rows[focus];
             if (row == P_MOVE_KEYSTONE || row == P_MOVE_FOCUS) {
                 toggleMove(row);
+                return;
+            }
+            if (row == P_GAME) {
+                adjustGame(dir);
                 return;
             }
             if (picture == null) return;
@@ -1125,6 +1136,24 @@ public class SettingsActivity extends Activity {
                         if (got != want) pictureLine = Ui.tr("O projetor não aceitou essa mudança.", "The projector didn't take that change.");
                     }
                     if (screen == PICTURE && focus >= rowCount()) focus = rowCount() - 1;
+                    invalidate();
+                });
+            });
+        }
+
+        /** HDMI game mode one step on: off, on, automatic (on when the projector recognizes a console). */
+        private void adjustGame(int dir) {
+            int want = game = nextValue(GAME_MODES, game, dir);
+            pictureChanges++;
+            pictureLine = "";
+            work.execute(() -> {
+                int now = Xgimi.setGameMode(want);
+                handler.post(() -> {
+                    if (--pictureChanges > 0) return;
+                    if (now >= 0) game = now;
+                    pictureLine = now != want ? Ui.tr("O projetor não aceitou essa mudança.", "The projector didn't take that change.")
+                            : now == Xgimi.GAME_AUTO ? Ui.tr("O modo jogo liga sozinho quando o projetor reconhece um console.",
+                            "Game mode turns on by itself when the projector recognizes a console.") : "";
                     invalidate();
                 });
             });

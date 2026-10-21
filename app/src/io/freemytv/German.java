@@ -68,6 +68,8 @@ final class German {
             case "Time Zone": return "Zeitzone";
             case "Couldn't change it": return "Ließ sich nicht ändern";
             case "your city": return "deine Stadt";
+            case "Game mode (HDMI)": return "Spielmodus (HDMI)";
+            case "Game mode turns on by itself when the projector recognizes a console.": return "Der Spielmodus geht von selbst an, wenn der Projektor eine Konsole erkennt.";
             case "Picture": return "Bild";
             case "Picture mode": return "Bildmodus";
             case "Motion smoothing": return "Bewegungsglättung";
