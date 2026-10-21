@@ -42,6 +42,7 @@
         <package android:name="com.android.newsettings" />
         <package android:name="com.xgimi.systemui" />
         <package android:name="com.xgimi.soundermodeservice" />
+        <package android:name="com.xgimi.xgimiservice" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

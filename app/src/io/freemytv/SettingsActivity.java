@@ -128,9 +128,9 @@ public class SettingsActivity extends Activity {
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
         private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5,
-                WIFI = 6, WIFI_FORGET = 7, BT = 8, BT_DEVICE = 9;
-        /** The main screen's rows (Remote Buttons, TV Settings, Wi-Fi, Bluetooth), shown in the order of mainRows(). */
-        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6, BT_ROW = 7;
+                WIFI = 6, WIFI_FORGET = 7, BT = 8, BT_DEVICE = 9, PICTURE = 10;
+        /** The main screen's rows (Remote Buttons, TV Settings, Wi-Fi, Bluetooth, Picture), shown in the order of mainRows(). */
+        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6, BT_ROW = 7, PICTURE_ROW = 8;
         private static final String[] WIFI_BARS = {"wifi_1", "wifi_1", "wifi_2", "wifi_3", "wifi_4"};
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
@@ -169,6 +169,10 @@ public class SettingsActivity extends Activity {
         private boolean btSearching, btListening;
         private String btLine = "";
         private BluetoothProfile a2dp;
+        // Picture (XGIMI's Play 6): the projector's settings (null until read), and a change on its way.
+        private Picture.State picture;
+        private String pictureLine = "";
+        private int pictureChanges;   // changes on their way: only the last one's answer is shown
         private final ExecutorService work = Executors.newSingleThreadExecutor();   // ADB and Bluetooth calls
         private StaticLayout errorLayout;   // the last error, wrapped (rebuilt only when it changes)
         private String errorShown;
@@ -289,6 +293,7 @@ public class SettingsActivity extends Activity {
                     }
                     if (mainRow(row) == WIFI_ROW) return Ui.tr("Wi-Fi", "Wi-Fi") + ", " + wifiSummary();
                     if (mainRow(row) == BT_ROW) return "Bluetooth" + (btSummary().isEmpty() ? "" : ", " + btSummary());
+                    if (mainRow(row) == PICTURE_ROW) return Ui.tr("Imagem", "Picture") + (pictureSummary().isEmpty() ? "" : ", " + pictureSummary());
                     String[] names = {Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview"), Ui.tr("Ajustes do Início", "Home Settings"),
                             Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings")};
                     int at = mainRow(row) - 1;
@@ -325,9 +330,9 @@ public class SettingsActivity extends Activity {
                     return name + (inUse ? Ui.tr(". Em uso", ". In use") : "") + ", " + (row + 1) + Ui.tr(" de 2", " of 2");
                 }
                 case HOME_SETTINGS:
-                case REMOTE_KEYS: {
-                    boolean keys = screen == REMOTE_KEYS;
-                    String[] labels = keys ? keyLabels() : settingLabels(), values = keys ? keyValues() : settingValues();
+                case REMOTE_KEYS:
+                case PICTURE: {
+                    String[] labels = listLabels(), values = listValues();
                     return row < labels.length ? labels[row] + ", " + values[row] : "";
                 }
                 case PICKER: {
@@ -352,7 +357,7 @@ public class SettingsActivity extends Activity {
         private RectF rowBox(int row) {
             float top, height;
             if (screen == MAIN) {
-                top = LIST_TOP + row * (ROW_H + ROW_GAP);
+                top = mainTop() + row * (ROW_H + ROW_GAP);
                 height = ROW_H;
             } else if (screen == HOME_CHOICE || screen == WIFI_FORGET || screen == BT_DEVICE) {
                 top = LIST_TOP + 20 + row * (CHOICE_H + ROW_GAP);
@@ -375,6 +380,7 @@ public class SettingsActivity extends Activity {
             else if (HomeMode.XGIMI) refreshWifi(false);
             if (screen == BT || screen == BT_DEVICE) openBt();
             else if (Bluetooth.available()) refreshBt();
+            if (Picture.available()) refreshPicture();
             Choreographer.getInstance().postFrameCallback(this);
             spoken.readAgain();
         }
@@ -441,16 +447,22 @@ public class SettingsActivity extends Activity {
             return HomeMode.FREE.equals(state.optString("mode")) && !state.optBoolean("homeReverted");
         }
 
-        /** Remote Buttons only where the remote's buttons can be reached; Wi-Fi on XGIMI projectors, before TV Settings. */
+        /** Remote Buttons only where the remote's buttons can be reached; Picture, Wi-Fi and Bluetooth on XGIMI projectors, before TV Settings. */
         private static int[] mainRows() {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
             if (RemoteKeys.supported()) rows.add(REMOTE_ROW);
+            if (Picture.available()) rows.add(PICTURE_ROW);
             if (HomeMode.XGIMI) rows.add(WIFI_ROW);
             if (Bluetooth.available()) rows.add(BT_ROW);
             rows.add(TV_ROW);
             int[] out = new int[rows.size()];
             for (int i = 0; i < out.length; i++) out[i] = rows.get(i);
             return out;
+        }
+
+        /** Where the main screen's rows start: higher past seven rows, so what's under them (the TMDB credit) stays on screen. */
+        private float mainTop() {
+            return LIST_TOP - Math.max(0, mainRows.length - 7) * (ROW_H + ROW_GAP);
         }
 
         /** The main screen's row at position i. */
@@ -472,7 +484,8 @@ public class SettingsActivity extends Activity {
                 case WIFI: return Math.min(PICK_VISIBLE, 1 + wifiCount());
                 case BT: return Math.min(PICK_VISIBLE, 1 + btCount());
                 case BT_DEVICE: return btActions().length;
-                case HOME_SETTINGS: return settingLabels().length;
+                case HOME_SETTINGS:
+                case PICTURE: return listLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
                 default: return Prefs.KEYS.length;
@@ -514,11 +527,13 @@ public class SettingsActivity extends Activity {
             String mode = freeActive() ? "Free My TV" : Ui.tr("Original", "Original");
             String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Tela de Descanso", "Screensaver"),
                     Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Prateleira", "Shelf"),
-                    Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi"), "Bluetooth"};
-            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", HomeMode.XGIMI ? wifiSummary() : "", btSummary()};
+                    Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi"), "Bluetooth",
+                    Ui.tr("Imagem", "Picture")};
+            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", HomeMode.XGIMI ? wifiSummary() : "", btSummary(),
+                    pictureSummary()};
             for (int i = 0; i < rowCount(); i++) {
                 int row = mainRow(i);
-                float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
+                float y = (mainTop() + i * (ROW_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
                 float f = drawRowBackground(c, i);
                 int ink = blend(0xF2FFFFFF, INK, f);
@@ -549,7 +564,7 @@ public class SettingsActivity extends Activity {
                 }
             }
 
-            float y = (LIST_TOP + rowCount() * (ROW_H + ROW_GAP) + 20) * k;
+            float y = (mainTop() + rowCount() * (ROW_H + ROW_GAP) + 20) * k;
             String error = state.optString("error");
             if (working && (busyText.contains("Permitir") || busyText.contains("Allow") || busyText.contains("разрешите"))) {
                 c.drawText(Ui.tr("Na TV: marque “Sempre permitir” e aperte OK.", "On the TV: tick “Always allow” and press OK."),
@@ -729,7 +744,7 @@ public class SettingsActivity extends Activity {
                     if (down && screen == SHELF_EDIT) {
                         moveShelfApp(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
-                    } else if (down && (screen == HOME_SETTINGS || screen == REMOTE_KEYS)) {
+                    } else if (down && (screen == HOME_SETTINGS || screen == REMOTE_KEYS || screen == PICTURE)) {
                         adjust(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
                     }
@@ -765,7 +780,7 @@ public class SettingsActivity extends Activity {
                             } else {
                                 if (screen == BT) closeBt();
                                 focus = mainIndex(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3 : screen == REMOTE_KEYS ? REMOTE_ROW
-                                        : screen == WIFI ? WIFI_ROW : screen == BT ? BT_ROW : 0);
+                                        : screen == WIFI ? WIFI_ROW : screen == BT ? BT_ROW : screen == PICTURE ? PICTURE_ROW : 0);
                                 screen = MAIN;
                             }
                         }
@@ -848,6 +863,15 @@ public class SettingsActivity extends Activity {
             return v;
         }
 
+        /** The rows of the list screens: Home Settings, Remote Buttons, Picture. */
+        private String[] listLabels() {
+            return screen == REMOTE_KEYS ? keyLabels() : screen == PICTURE ? pictureLabels() : settingLabels();
+        }
+
+        private String[] listValues() {
+            return screen == REMOTE_KEYS ? keyValues() : screen == PICTURE ? pictureValues() : settingValues();
+        }
+
         /** Installed TV apps, by name, after "Nothing": what a remote button can open. */
         private void loadApps() {
             List<String[]> found = new ArrayList<>();
@@ -868,6 +892,10 @@ public class SettingsActivity extends Activity {
 
         /** Changes the focused row's value one step (OK and → go forward, ← goes back). */
         private void adjust(int dir) {
+            if (screen == PICTURE) {
+                adjustPicture(dir);
+                return;
+            }
             if (screen == REMOTE_KEYS) {
                 int n = appPkgs.size();
                 int at = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[focus]));
@@ -960,6 +988,107 @@ public class SettingsActivity extends Activity {
 
         private int listSize() {
             return screen == SHELF_EDIT ? shelfRows.size() : screen == WIFI ? 1 + wifiCount() : screen == BT ? 1 + btCount() : pickLabels.size();
+        }
+
+        // MARK: - Picture (XGIMI's Play 6)
+
+        private static String modeName(int mode) {
+            switch (mode) {
+                case 10: return Ui.tr("IA", "AI");
+                case 1: return Ui.tr("Filme", "Movie");
+                case 9: return Ui.tr("Esporte", "Sport");
+                case 7: return "TV";
+                case 3: return Ui.tr("Personalizado", "Custom");
+                case 25: return Ui.tr("Escritório", "Office");
+                case 5: return Ui.tr("Desempenho", "Performance");
+                default: return "—";
+            }
+        }
+
+        private static String motionName(int level) {
+            switch (level) {
+                case 0: return Ui.tr("Desligado", "Off");
+                case 1: return Ui.tr("Baixo", "Low");
+                case 2: return Ui.tr("Médio", "Medium");
+                default: return Ui.tr("Alto", "High");
+            }
+        }
+
+        /** The main row's value: the picture mode in use. */
+        private String pictureSummary() {
+            return picture == null || Picture.indexOf(Picture.MODES, picture.mode) < 0 ? "" : modeName(picture.mode);
+        }
+
+        /** Picture mode, HDR, and motion smoothing in the modes that have it (as in XGIMI's menu). */
+        private String[] pictureLabels() {
+            List<String> l = new ArrayList<>();
+            l.add(Ui.tr("Modo de imagem", "Picture mode"));
+            l.add("HDR");
+            if (picture != null && picture.hasMotion()) l.add(Ui.tr("Suavização de movimento", "Motion smoothing"));
+            return l.toArray(new String[0]);
+        }
+
+        private String[] pictureValues() {
+            String[] v = new String[pictureLabels().length];
+            if (picture == null) {
+                java.util.Arrays.fill(v, "—");
+                return v;
+            }
+            v[0] = modeName(picture.mode);
+            v[1] = picture.hdr ? Ui.tr("Automático", "Automatic") : Ui.tr("Desligado", "Off");
+            if (v.length > 2) v[2] = motionName(picture.motion);
+            return v;
+        }
+
+        private void refreshPicture() {
+            if (pictureChanges > 0) return;
+            Context app = getContext().getApplicationContext();
+            work.execute(() -> {
+                Picture.State s = Picture.read(app);
+                handler.post(() -> {
+                    if (pictureChanges > 0) return;
+                    if (s != null) picture = s;
+                    else pictureLine = Ui.tr("Não deu para ler os ajustes de imagem do projetor.", "Couldn't read the projector's picture settings.");
+                    if (screen == PICTURE && focus >= rowCount()) focus = rowCount() - 1;
+                    invalidate();
+                });
+            });
+        }
+
+        /** The focused row one step on: shown at once, then what the projector took (a mode brings its own HDR and motion). */
+        private void adjustPicture(int dir) {
+            if (picture == null || pictureChanges >= 3) return;   // a held arrow doesn't queue a long run of changes
+            Picture.State p = picture;
+            int row = focus, want;
+            switch (row) {
+                case 0: want = p.mode = nextValue(Picture.MODES, p.mode, dir); break;
+                case 1: want = (p.hdr = !p.hdr) ? 1 : 0; break;
+                default: want = p.motion = nextValue(Picture.MOTION, p.motion, dir); break;
+            }
+            pictureChanges++;
+            pictureLine = "";
+            Context app = getContext().getApplicationContext();
+            work.execute(() -> {
+                Picture.State now = row == 0 ? Picture.setMode(app, want) : row == 1 ? Picture.setHdr(app, want == 1)
+                        : Picture.setMotion(app, want);
+                handler.post(() -> {
+                    if (--pictureChanges > 0) return;
+                    if (now == null) {
+                        pictureLine = Ui.tr("Não deu para ler os ajustes de imagem do projetor.", "Couldn't read the projector's picture settings.");
+                    } else {
+                        picture = now;
+                        int got = row == 0 ? now.mode : row == 1 ? (now.hdr ? 1 : 0) : now.motion;
+                        if (got != want) pictureLine = Ui.tr("O projetor não aceitou essa mudança.", "The projector didn't take that change.");
+                    }
+                    if (screen == PICTURE && focus >= rowCount()) focus = rowCount() - 1;
+                    invalidate();
+                });
+            });
+        }
+
+        private static int nextValue(int[] values, int now, int dir) {
+            int at = Picture.indexOf(values, now);
+            return values[at < 0 ? (dir > 0 ? 0 : values.length - 1) : (at + dir + values.length) % values.length];
         }
 
         // MARK: - Wi-Fi (XGIMI projectors)
@@ -1573,18 +1702,18 @@ public class SettingsActivity extends Activity {
         }
 
         private void drawList(Canvas c) {
-            boolean keys = screen == REMOTE_KEYS;
-            String[] labels = keys ? keyLabels() : settingLabels();
-            String[] values = keys ? keyValues() : settingValues();
+            boolean keys = screen == REMOTE_KEYS, pic = screen == PICTURE;
+            String[] labels = listLabels();
+            String[] values = listValues();
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            c.drawText(keys ? Ui.tr("Botões do Controle", "Remote Buttons") : Ui.tr("Ajustes do Início", "Home Settings"),
+            c.drawText(keys ? Ui.tr("Botões do Controle", "Remote Buttons") : pic ? Ui.tr("Imagem", "Picture") : Ui.tr("Ajustes do Início", "Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                boolean locked = !keys && i >= COIN_ROWS && !Prefs.quotes();
+                boolean locked = screen == HOME_SETTINGS && i >= COIN_ROWS && !Prefs.quotes();
                 rowValue.setColor(blend(locked ? 0x59FFFFFF : 0xB3FFFFFF, locked ? 0x591C1C1E : 0xB31C1C1E, f));
                 if (locked) rowLabel.setColor(blend(0x73FFFFFF, 0x731C1C1E, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
@@ -1594,7 +1723,11 @@ public class SettingsActivity extends Activity {
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
             float hy = (LIST_TOP + 20 + labels.length * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
             c.drawText(Ui.tr("OK ou as setas mudam o valor.", "OK or the arrows change the value."), LIST_X * k + 30 * k, hy, hint);
-            if (keys) {
+            if (pic) {
+                String line = !pictureLine.isEmpty() ? pictureLine : Ui.tr("As mudanças aparecem na hora.", "Changes show at once.");
+                c.drawText(TextUtils.ellipsize(line, new TextPaint(hint), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(),
+                        LIST_X * k + 30 * k, hy + 38 * k, hint);
+            } else if (keys) {
                 c.drawText(RemoteKeys.VESTEL ? Ui.tr("YouTube, Prime Video e Google Play: a própria TV controla esses botões.",
                         "YouTube, Prime Video and Google Play: the TV itself controls those buttons.")
                         : RemoteKeys.KTC ? Ui.tr("Netflix, YouTube e Prime Video: a própria TV controla esses botões.",
@@ -1629,6 +1762,11 @@ public class SettingsActivity extends Activity {
                 if (screen == BT) activateBt(); else activateBtDevice();
                 invalidate();
                 spoken.focusMoved();
+                return;
+            }
+            if (screen == PICTURE) {
+                adjustPicture(1);
+                invalidate();
                 return;
             }
             if (screen == HOME_CHOICE) {
@@ -1690,6 +1828,11 @@ public class SettingsActivity extends Activity {
                 btLine = "";
                 btFound.clear();
                 openBt();
+            } else if (mainRow(focus) == PICTURE_ROW) {
+                screen = PICTURE;
+                focus = 0;
+                pictureLine = "";
+                refreshPicture();
             } else {
                 HomeApps.openTvSettings(c);
             }
