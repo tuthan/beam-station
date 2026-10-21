@@ -440,6 +440,8 @@ final class HomeApps {
      * be HDMI, so its explicit activity receives the tuner URI. Other TV apps keep the standard channel-list request.
      */
     static Intent liveTv(Context c) {
+        // Projectors have no tuner (an app's preview channels, VLC's, would count as one).
+        if (HomeMode.XGIMI) return null;
         PackageManager pm = c.getPackageManager();
         // MediaTek OneWorld TV Center (KTC/NextStar) has one input per tuner mode (antenna, cable, satellite): tuning one
         // switches the TV to that mode and hides the other channel lists, so it opens as it is, on its own last channel.
