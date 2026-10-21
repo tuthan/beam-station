@@ -16,8 +16,9 @@ import java.util.regex.Pattern;
 /**
  * Rokid Station (the box for Rokid's AR glasses): the glasses' 2D/3D, refresh rate, picture scene and speaker mode,
  * through Rokid's `rokid_display` service (IRokidDisplayManager in framework.jar; its setters check no permission).
- * The service has no SELinux label of its own, and Android doesn't let apps look up unlabelled services, so when the
- * binder can't be had the same calls go through the TV's own ADB (`service call`), as the shell's are allowed. The
+ * The service has no SELinux label of its own, and Android's policy doesn't let apps look up unlabelled services; the
+ * Station's SELinux is permissive, so the lookup works there (logged as denied). Should a firmware update enforce it,
+ * the same calls go through the TV's own ADB (`service call`), as the shell's are allowed. The
  * calls run one at a time, in the order asked, on one thread; read and the setters wait for theirs: never on the main
  * thread.
  */
@@ -107,16 +108,32 @@ final class Rokid {
         }));
     }
 
-    /** Changes one setting when glasses are plugged in, then reads them all back (120 Hz changes the mode too). */
+    /**
+     * Changes one setting when glasses are plugged in, then reads them all back (120 Hz changes the mode too). A new
+     * mode or refresh rate retrains the HDMI link: the glasses read as unplugged for about two seconds, and what's read
+     * meanwhile is stale, so it waits (up to 8 s) for them to come back with what was asked.
+     */
     private static State set(Context c, int code, int value) {
         if (!available()) return null;
         return with(c, calls -> {
             if (calls.call(PLUGGED, null) == 0) return null;
             int ok = calls.call(code, value);
             AppLog.w("glasses: call " + code + " = " + value + (ok == 1 ? "" : " refused"));
-            SystemClock.sleep(300);   // the mode and refresh rate are applied on Rokid's own thread
+            boolean display = code == SET_MODE || code == SET_FPS;
+            long until = SystemClock.elapsedRealtime() + (ok == 1 && display ? 8000 : 0);
+            do {
+                SystemClock.sleep(display ? 500 : 300);
+            } while (SystemClock.elapsedRealtime() < until && !settled(calls, code, value));
             return readAll(calls);
         });
+    }
+
+    /** The glasses are back on the link with the mode or refresh rate asked for (2D: either refresh rate). */
+    private static boolean settled(Calls calls, int code, int value) throws IOException {
+        if (calls.call(PLUGGED, null) == 0) return false;
+        if (code == SET_FPS) return calls.call(GET_FPS, null) == value;
+        int mode = calls.call(GET_MODE, null);
+        return value == MODE_3D ? mode == MODE_3D : mode != MODE_3D;
     }
 
     private static State readAll(Calls calls) throws IOException {
