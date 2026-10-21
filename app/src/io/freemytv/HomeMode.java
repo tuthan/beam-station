@@ -271,7 +271,7 @@ final class HomeMode {
             }
             busy(c, Ui.tr("Trocando o Início e a tela de descanso…", "Switching the home screen and screensaver…"));
             Watchdog.clear(c);
-            if (XGIMI) xgimiLanguage(adb, true);
+            if (XGIMI) xgimiGrants(adb, true);
             check(adb.shell("cmd package set-home-activity " + HOME_ACTIVITY), "Success",
                     Ui.tr("o Android não aceitou o novo Início", "Android didn't accept the new home screen"));
             adb.shell("settings put secure screensaver_components " + DREAM);
@@ -355,7 +355,7 @@ final class HomeMode {
             record(adb, new HashSet<>(failed));
             busy(c, Ui.tr("Devolvendo o Início original…", "Restoring the original home screen…"));
             boolean homeOk = restoreHome(adb, home);
-            if (XGIMI) xgimiLanguage(adb, false);
+            if (XGIMI) xgimiGrants(adb, false);
             restoreScreensaver(adb, s);
             try {
                 remoteService(c, adb, false);
@@ -387,14 +387,17 @@ final class HomeMode {
 
     /**
      * XGIMI: lets this app set the system language (Xgimi keeps it in Free My TV's while XGIMI Settings turns it to
-     * Chinese), or takes that back. The language stays as it is; XGIMI Settings switches it again when it opens.
+     * Chinese) and search for Bluetooth devices (Android 10+ ties that to location, never read here), or takes that
+     * back. The language stays as it is; XGIMI Settings switches it again when it opens.
      */
-    private static void xgimiLanguage(Adb adb, boolean on) {
+    private static void xgimiGrants(Adb adb, boolean on) {
         try {
-            adb.shell("pm " + (on ? "grant " : "revoke ") + PKG + " android.permission.CHANGE_CONFIGURATION");
+            String pm = "pm " + (on ? "grant " : "revoke ") + PKG + " android.permission.";
+            adb.shell(pm + "CHANGE_CONFIGURATION");
+            adb.shell(pm + "ACCESS_FINE_LOCATION");
             adb.shell("appops set " + PKG + " WRITE_SETTINGS " + (on ? "allow" : "default"));
         } catch (IOException e) {
-            AppLog.w("system language permission: " + e.getMessage());
+            AppLog.w("XGIMI permissions: " + e.getMessage());
         }
     }
 
@@ -492,7 +495,7 @@ final class HomeMode {
                         fixed.add(pkg);
                     }
                 }
-                if (XGIMI) xgimiLanguage(adb, true);
+                if (XGIMI) xgimiGrants(adb, true);
                 if (!reverted && !homeHolder(adb).contains(PKG)) {
                     adb.shell("cmd package set-home-activity " + HOME_ACTIVITY);
                     fixed.add(Ui.tr("o Início", "the home screen"));

@@ -204,12 +204,13 @@ final class Xgimi {
 
     /**
      * XGIMI force-stops apps a few seconds after they leave the screen, so the check after an update or a boot may
-     * never have run, and the permission it grants may be missing. Asked once per process, in Free My TV mode.
+     * never have run, and the permissions it grants may be missing. Asked once per process, in Free My TV mode.
      */
     private static void heal(Context app) {
         if (verifyAsked) return;
         WORK.execute(() -> {
-            if (verifyAsked || granted(app) || !HomeMode.FREE.equals(HomeMode.state(app).optString("mode"))) return;
+            boolean all = granted(app) && app.checkSelfPermission(Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED;
+            if (verifyAsked || all || !HomeMode.FREE.equals(HomeMode.state(app).optString("mode"))) return;
             verifyAsked = true;
             HomeMode.verify(app);
         });

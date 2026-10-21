@@ -19,8 +19,8 @@ MAP = {
     "chevron_down": ("keyboard_arrow_down", 0), "sunrise": ("wb_twilight", 1), "sunset": ("wb_twilight", 1),
     "live_tv": ("live_tv", 1), "bitcoin": ("currency_bitcoin", 0),
     "focus": ("center_focus_strong", 1), "keystone": ("fit_screen", 1),
-    "wifi": ("wifi", 1), "wifi_1": ("network_wifi_1_bar", 1), "wifi_2": ("network_wifi_2_bar", 1),
-    "wifi_3": ("network_wifi_3_bar", 1), "wifi_4": ("signal_wifi_4_bar", 1), "lock": ("lock", 1),
+    "wifi_1": ("network_wifi_1_bar", 1), "wifi_2": ("network_wifi_2_bar", 1), "wifi_3": ("network_wifi_3_bar", 1),
+    "wifi_4": ("signal_wifi_4_bar", 1), "lock": ("lock", 1),
 }
 
 
