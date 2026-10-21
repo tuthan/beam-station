@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.content.ServiceConnection;
 import android.content.pm.PackageManager;
 import android.content.res.Configuration;
+import android.media.tv.TvContract;
 import android.os.Handler;
 import android.os.IBinder;
 import android.os.LocaleList;
@@ -22,7 +23,7 @@ import java.util.concurrent.Executors;
 import java.util.function.Consumer;
 
 /**
- * XGIMI projectors: auto focus, auto keystone and speaker mode through XGIMI's own services (exported, with no
+ * XGIMI projectors: auto focus, auto keystone, speaker mode and HDMI through XGIMI's own services (exported, with no
  * permission), the Play 6's battery, eco mode and corrections after a move, and the system language. XGIMI's screens are Chinese only, and its Settings switches the system to
  * Chinese each time it opens, with a notice whose OK closes the panel. So in Free My TV mode the system language
  * follows Free My TV's: Chinese just before XGIMI's panel opens (no notice), ours again when our windows get focus back.
@@ -66,6 +67,15 @@ final class Xgimi {
 
     private static Intent afAk(int type) {
         return new Intent(AF_AK).setPackage(SYSTEM_UI).putExtra("type", type);
+    }
+
+    /**
+     * An HDMI input in XGIMI's player (com.xgimi.xhplayer), as XGIMI Home opens it: Android's own request for the input
+     * goes to Live Channels. The type is given, so the match doesn't wait on the TV provider.
+     */
+    static Intent hdmi(String inputId) {
+        return new Intent("com.xgimi.action.hdmiPlayer")
+                .setDataAndType(TvContract.buildChannelUriForPassthroughInput(inputId), TvContract.Channels.CONTENT_ITEM_TYPE);
     }
 
     private static boolean start(Context c, Intent service) {

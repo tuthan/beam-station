@@ -402,7 +402,8 @@ final class HomeApps {
                 intent = liveTv(a);
                 break;
             case INPUT:
-                intent = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(it.inputId));
+                intent = HomeMode.XGIMI ? Xgimi.hdmi(it.inputId)
+                        : new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(it.inputId));
                 break;
             case SETTINGS:
                 intent = new Intent().setComponent(new ComponentName(a, SettingsActivity.class));
