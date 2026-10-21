@@ -53,7 +53,13 @@ public class HomeActivity extends Activity {
 
     @Override protected void onPause() {
         if (home != null) home.pause();
+        Xgimi.paused(this);
         super.onPause();
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        Xgimi.focusChanged(this, hasFocus);
     }
 
     /** Home button pressed on the home screen: back to the entry state (focus on the first app, sheet closed). */

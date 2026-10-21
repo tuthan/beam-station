@@ -11,6 +11,12 @@ final class German {
             case "Settings": return "Einstellungen";
             case "Home Settings": return "Start-Einstellungen";
             case "TV Settings": return "TV-Einstellungen";
+            case "Auto Focus": return "Autofokus";
+            case "Auto Keystone": return "Trapezkorrektur";
+            case "Speaker Mode": return "Lautsprechermodus";
+            case "Speaker mode is on.": return "Lautsprechermodus ist an.";
+            case "Speaker mode is off.": return "Lautsprechermodus ist aus.";
+            case "Speaker mode isn't available right now.": return "Der Lautsprechermodus ist gerade nicht verfügbar.";
             case "HDMI Inputs": return "HDMI-Eingänge";
             case "Inputs": return "Eingänge";
             case "Shortcuts": return "Verknüpfungen";

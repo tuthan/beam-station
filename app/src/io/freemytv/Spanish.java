@@ -11,6 +11,12 @@ final class Spanish {
             case "Settings": return "Ajustes";
             case "Home Settings": return "Ajustes de inicio";
             case "TV Settings": return "Ajustes del TV";
+            case "Auto Focus": return "Enfoque automático";
+            case "Auto Keystone": return "Keystone automático";
+            case "Speaker Mode": return "Modo altavoz";
+            case "Speaker mode is on.": return "Modo altavoz activado.";
+            case "Speaker mode is off.": return "Modo altavoz desactivado.";
+            case "Speaker mode isn't available right now.": return "El modo altavoz no está disponible ahora.";
             case "HDMI Inputs": return "Entradas HDMI";
             case "Inputs": return "Entradas";
             case "Shortcuts": return "Accesos directos";

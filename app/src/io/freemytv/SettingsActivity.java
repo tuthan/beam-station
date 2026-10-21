@@ -73,7 +73,13 @@ public class SettingsActivity extends Activity {
     @Override protected void onPause() {
         closePreview();     // before pausing the view: closing the preview resumes it (view.resume)
         view.pause();
+        Xgimi.paused(this);
         super.onPause();
+    }
+
+    @Override public void onWindowFocusChanged(boolean hasFocus) {
+        super.onWindowFocusChanged(hasFocus);
+        Xgimi.focusChanged(this, hasFocus);
     }
 
     @Override public boolean dispatchKeyEvent(KeyEvent event) {

@@ -57,6 +57,8 @@ final class HomeApps {
     static final int APP = 0, LIVE_TV = 1, INPUT = 2, ALL_APPS = 3, SETTINGS = 4, ANDROID_SETTINGS = 5;
     /** The "HDMI Inputs" button: opens the bottom drawer on the inputs (the home screen handles it). */
     static final int INPUTS = 7;
+    /** XGIMI projectors' buttons (Xgimi): auto focus, auto keystone, speaker mode. */
+    static final int FOCUS = 8, KEYSTONE = 9, SPEAKER = 10;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -215,12 +217,17 @@ final class HomeApps {
         return shortcut(SETTINGS, "settings", Ui.tr("Ajustes", "Settings"), "settings");
     }
 
-    /** Shortcuts in the bottom drawer. */
-    static List<Item> drawerShortcuts() {
+    /** Shortcuts in the bottom drawer (on XGIMI projectors, also focus, keystone and speaker mode). */
+    static List<Item> drawerShortcuts(Context c) {
         List<Item> items = new ArrayList<>();
         items.add(shortcut(ALL_APPS, "all", Ui.tr("Todos os Apps", "All Apps"), "apps"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Ajustes do Início", "Home Settings"), "settings"));
         items.add(shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("Ajustes da TV", "TV Settings"), "tv_settings"));
+        if (Xgimi.hasFocusKeystone(c)) {
+            items.add(shortcut(FOCUS, "focus", Ui.tr("Foco Automático", "Auto Focus"), "focus"));
+            items.add(shortcut(KEYSTONE, "keystone", Ui.tr("Ajuste Trapezoidal", "Auto Keystone"), "keystone"));
+        }
+        if (Xgimi.hasSpeaker(c)) items.add(shortcut(SPEAKER, "speaker", Ui.tr("Modo Caixa de Som", "Speaker Mode"), "speaker"));
         return items;
     }
 
@@ -368,13 +375,9 @@ final class HomeApps {
 
     /** The TV's own settings. XGIMI has no settings activity: its Settings is a service that the remote's key starts. */
     static boolean openTvSettings(Context c) {
+        if (HomeMode.XGIMI) return Xgimi.openSettings(c);
         try {
-            if (HomeMode.XGIMI) {
-                c.startForegroundService(new Intent("com.xgimi.settings.SETTINGS")
-                        .setComponent(new ComponentName("com.android.newsettings", "com.xgimi.newsettings.SettingService")));
-            } else {
-                c.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
-            }
+            c.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return true;
         } catch (ActivityNotFoundException | SecurityException e) {
             AppLog.w("couldn't open the TV's settings: " + e.getMessage());
@@ -407,6 +410,10 @@ final class HomeApps {
                 if (HomeMode.XGIMI) return openTvSettings(a);
                 intent = new Intent(Settings.ACTION_SETTINGS);
                 break;
+            case FOCUS:
+                return Xgimi.autoFocus(a);
+            case KEYSTONE:
+                return Xgimi.autoKeystone(a);
             default:
                 return false;
         }

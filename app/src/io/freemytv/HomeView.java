@@ -1403,7 +1403,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     private static List<HomeApps.Item> drawerList(Context c) {
         List<HomeApps.Item> list = HomeApps.allInputs(c);
-        list.addAll(HomeApps.drawerShortcuts());
+        list.addAll(HomeApps.drawerShortcuts(c));
         return list;
     }
 
@@ -2179,6 +2179,14 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         click.open();
         if (it.kind == HomeApps.ALL_APPS) {
             openSheet();
+            return;
+        }
+        if (it.kind == HomeApps.SPEAKER) {
+            boolean asked = Xgimi.toggleSpeaker(activity, on -> showToast(on == null
+                    ? Ui.tr("O modo caixa de som não está disponível agora.", "Speaker mode isn't available right now.")
+                    : on ? Ui.tr("Modo caixa de som ligado.", "Speaker mode is on.")
+                    : Ui.tr("Modo caixa de som desligado.", "Speaker mode is off.")));
+            if (!asked) showToast(Ui.tr("Não deu para abrir ", "Couldn't open ") + it.label + ".");
             return;
         }
         if (it.kind == HomeApps.INPUTS) {

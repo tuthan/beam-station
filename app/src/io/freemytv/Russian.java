@@ -18,6 +18,12 @@ final class Russian {
             case "Settings": return "Настройки";
             case "Home Settings": return "Главный экран";
             case "TV Settings": return "Настройки ТВ";
+            case "Auto Focus": return "Автофокус";
+            case "Auto Keystone": return "Трапеция";
+            case "Speaker Mode": return "Режим колонки";
+            case "Speaker mode is on.": return "Режим колонки включён.";
+            case "Speaker mode is off.": return "Режим колонки выключен.";
+            case "Speaker mode isn't available right now.": return "Режим колонки сейчас недоступен.";
             case "HDMI Inputs": return "Входы HDMI";
             case "Inputs": return "Входы";
             case "Shortcuts": return "Ярлыки";
