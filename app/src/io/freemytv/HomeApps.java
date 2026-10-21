@@ -59,6 +59,8 @@ final class HomeApps {
     static final int INPUTS = 7;
     /** Rokid glasses' 2D/3D button (Rokid); its key says what pressing it does: "glasses-3d" or "glasses-2d". */
     static final int GLASSES_3D = 8;
+    /** The Rokid Station's sleep timer button (Power): each press steps it on (off, 30, 60, 90, 120 min). */
+    static final int SLEEP_TIMER = 9;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -218,14 +220,15 @@ final class HomeApps {
     }
 
     /**
-     * Shortcuts in the bottom drawer (with Rokid glasses plugged in, also 2D/3D). `glasses`: also asks the glasses for
-     * their mode (slow: background only); without it, the 2D/3D button waits for the next load.
+     * Shortcuts in the bottom drawer (on the Rokid Station, the sleep timer, and 2D/3D with glasses plugged in). `glasses`:
+     * also asks the glasses for their mode (slow: background only); without it, the 2D/3D button waits for the next load.
      */
     static List<Item> drawerShortcuts(Context c, boolean glasses) {
         List<Item> items = new ArrayList<>();
         items.add(shortcut(ALL_APPS, "all", Ui.tr("Todos os Apps", "All Apps"), "apps"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Ajustes do Início", "Home Settings"), "settings"));
         items.add(shortcut(ANDROID_SETTINGS, "tv-settings", Ui.tr("Ajustes da TV", "TV Settings"), "tv_settings"));
+        if (Power.available()) items.add(shortcut(SLEEP_TIMER, "sleep-timer", Ui.tr("Timer para Dormir", "Sleep Timer"), "bedtime"));
         int mode = glasses ? Rokid.mode(c) : -1;
         if (mode == Rokid.MODE_3D) items.add(shortcut(GLASSES_3D, "glasses-2d", Ui.tr("Mudar para 2D", "Switch to 2D"), "3d"));
         else if (mode >= 0) items.add(shortcut(GLASSES_3D, "glasses-3d", Ui.tr("Mudar para 3D", "Switch to 3D"), "3d"));

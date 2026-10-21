@@ -2199,6 +2199,13 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             openSheet();
             return;
         }
+        if (it.kind == HomeApps.SLEEP_TIMER) {
+            int next = Power.nextTimer(Power.left(Power.timerEnd(activity)), 1);
+            Power.setTimer(activity, next);
+            showToast(next == 0 ? Ui.tr("Timer para dormir desligado.", "Sleep timer off.")
+                    : Ui.tr("Timer para dormir: ", "Sleep timer: ") + Power.duration(next) + ".");
+            return;
+        }
         if (it.kind == HomeApps.GLASSES_3D) {
             boolean to3d = it.key.equals("glasses-3d");
             Context app = activity.getApplicationContext();
