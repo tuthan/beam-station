@@ -366,6 +366,22 @@ final class HomeApps {
         return it;
     }
 
+    /** The TV's own settings. XGIMI has no settings activity: its Settings is a service that the remote's key starts. */
+    static boolean openTvSettings(Context c) {
+        try {
+            if (HomeMode.XGIMI) {
+                c.startForegroundService(new Intent("com.xgimi.settings.SETTINGS")
+                        .setComponent(new ComponentName("com.android.newsettings", "com.xgimi.newsettings.SettingService")));
+            } else {
+                c.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            }
+            return true;
+        } catch (ActivityNotFoundException | SecurityException e) {
+            AppLog.w("couldn't open the TV's settings: " + e.getMessage());
+            return false;
+        }
+    }
+
     /** Opens the item with the system zoom transition growing out of the card (the app starts opening right away). */
     static boolean open(Activity a, Item it, View from, int x, int y, int w, int h) {
         Intent intent, plain = null;   // plain: the app's own home, when it won't take the title's address
@@ -388,6 +404,7 @@ final class HomeApps {
                 intent = new Intent().setComponent(new ComponentName(a, SettingsActivity.class));
                 break;
             case ANDROID_SETTINGS:
+                if (HomeMode.XGIMI) return openTvSettings(a);
                 intent = new Intent(Settings.ACTION_SETTINGS);
                 break;
             default:

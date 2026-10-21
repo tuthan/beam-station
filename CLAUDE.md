@@ -142,6 +142,11 @@ Then, in the code:
 - Build, install, have them switch on the TV, read `adb logcat -s FreeMyTV`, then have them switch back to
   *Original* once and confirm everything returned.
 
+XGIMI projectors (China ROM, GMUI): their chooser (`xgimiframeworkui`) opens XGIMI Home whenever it is on, whatever
+the default home, so Free My TV mode turns off `com.xgimi.home` and nothing else. Every XGIMI app runs as the shared
+system UID that also saved the Wi-Fi networks; Android keeps those (their creator, `android.uid.system`, matches no
+package), but don't turn off other XGIMI packages. *TV Settings* opens XGIMI's panel (its `SettingService`).
+
 LG and Samsung: the web app above. Other TVs that don't run Google TV or Android TV: the way is a Google TV streamer on
 HDMI (Chromecast with Google TV, Google TV Streamer, onn 4K, NVIDIA Shield). Set Free My TV up on the streamer.
 

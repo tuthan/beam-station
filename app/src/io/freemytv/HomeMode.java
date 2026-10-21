@@ -80,6 +80,15 @@ final class HomeMode {
         "com.mediatek.tv.retaildemo", "com.electronic.manual",                        // store demo, manual
     };
 
+    /**
+     * XGIMI projectors: their apps all run as the shared system UID, which also owns every saved Wi-Fi network, so
+     * only XGIMI Home is turned off (Android keeps networks saved by a shared UID: their creator matches no package).
+     * Its chooser (xgimiframeworkui) opens XGIMI Home whenever it is on, and answers the HOME query itself, so the
+     * stock home screen is named here.
+     */
+    static final boolean XGIMI = "XGIMI".equalsIgnoreCase(Build.BRAND);
+    private static final String XGIMI_HOME = "com.xgimi.home/com.xgimi.module.cellview.home.ui.HomeActivity";
+
     /** The voice assistant, only with disable_assistant=true in config.properties (the mic button stops working). */
     static final String[] ASSISTANT = {"com.google.android.katniss", "com.android.hotwordenrollment.okgoogle"};
 
@@ -231,7 +240,7 @@ final class HomeMode {
             String home = originalHome(s);
             if (home.isEmpty() || home.startsWith(PKG + "/")) {
                 String found = currentHome(adb);
-                home = found != null ? realHome(found) : "";
+                home = found != null ? realHome(found) : XGIMI ? XGIMI_HOME : "";
             }
             String dream = originalDream(s);
             if (dream.isEmpty()) dream = defaultDream(adb);
@@ -502,6 +511,7 @@ final class HomeMode {
         List<String> out = new ArrayList<>();
         String homePkg = packageOf(home);
         if (homePkg != null && !homePkg.equals(PKG)) out.add(homePkg);
+        if (XGIMI) return out;
         if (TV_LAUNCHER.equals(homePkg)) out.add(TV_RECOMMENDATIONS);
         if (setupHome) out.add(GOOGLE_SETUP);
         String dreamPkg = packageOf(dream);
