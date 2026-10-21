@@ -67,6 +67,10 @@ final class Spanish {
             case "Couldn't reach the glasses.": return "No se pudo conectar con las gafas.";
             case "The glasses didn't take that change.": return "Las gafas no aceptaron ese cambio.";
             case "Home puts the glasses back in 2D.": return "Inicio devuelve las gafas a 2D.";
+            case "Switch to 3D": return "Cambiar a 3D";
+            case "Switch to 2D": return "Cambiar a 2D";
+            case "The glasses are in 3D.": return "Gafas en 3D.";
+            case "The glasses are in 2D.": return "Gafas en 2D.";
             case "HDMI Inputs": return "Entradas HDMI";
             case "Inputs": return "Entradas";
             case "Shortcuts": return "Accesos directos";

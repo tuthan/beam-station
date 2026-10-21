@@ -391,7 +391,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // First time: right away (a cold start opens with the apps already there); missing logos come from reload().
         setShelf(HomeApps.shelf(a, false));
         setStatusItems(statusList(a));
-        setDrawerItems(drawerList(a));
+        setDrawerItems(drawerList(a, false));
     }
 
     // MARK: - Lifecycle (called by HomeActivity)
@@ -1403,9 +1403,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     // MARK: - Bottom drawer
 
-    private static List<HomeApps.Item> drawerList(Context c) {
+    /** `glasses`: also the 2D/3D button, which asks the glasses (background only). */
+    private static List<HomeApps.Item> drawerList(Context c, boolean glasses) {
         List<HomeApps.Item> list = HomeApps.allInputs(c);
-        list.addAll(HomeApps.drawerShortcuts());
+        list.addAll(HomeApps.drawerShortcuts(c, glasses));
         return list;
     }
 
@@ -1929,7 +1930,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         LOADER.execute(() -> {
             final List<HomeApps.Item> s = HomeApps.shelf(c, true);
             final List<HomeApps.Item> st = statusList(c);
-            final List<HomeApps.Item> d = drawerList(c);
+            final List<HomeApps.Item> d = drawerList(c, true);
             final List<HomeApps.Item> o = HomeApps.others(c);
             handler.post(() -> {
                 setShelf(s);
@@ -2181,6 +2182,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         click.open();
         if (it.kind == HomeApps.ALL_APPS) {
             openSheet();
+            return;
+        }
+        if (it.kind == HomeApps.GLASSES_3D) {
+            boolean to3d = it.key.equals("glasses-3d");
+            Context app = activity.getApplicationContext();
+            LOADER.execute(() -> {
+                Rokid.State s = Rokid.setMode(app, to3d ? Rokid.MODE_3D : Rokid.MODE_2D);
+                handler.post(() -> {
+                    showToast(s == null ? Ui.tr("Não deu para falar com os óculos.", "Couldn't reach the glasses.")
+                            : s.is3d() != to3d ? Ui.tr("Os óculos não aceitaram essa mudança.", "The glasses didn't take that change.")
+                            : to3d ? Ui.tr("Óculos em 3D.", "The glasses are in 3D.") : Ui.tr("Óculos em 2D.", "The glasses are in 2D."));
+                    reload();   // the button now says the other way
+                });
+            });
             return;
         }
         if (it.kind == HomeApps.INPUTS) {

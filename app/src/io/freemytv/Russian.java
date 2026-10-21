@@ -74,6 +74,10 @@ final class Russian {
             case "Couldn't reach the glasses.": return "Не удалось связаться с очками.";
             case "The glasses didn't take that change.": return "Очки не приняли это изменение.";
             case "Home puts the glasses back in 2D.": return "Главный экран возвращает очки в 2D.";
+            case "Switch to 3D": return "Включить 3D";
+            case "Switch to 2D": return "Включить 2D";
+            case "The glasses are in 3D.": return "Очки в режиме 3D.";
+            case "The glasses are in 2D.": return "Очки в режиме 2D.";
             case "HDMI Inputs": return "Входы HDMI";
             case "Inputs": return "Входы";
             case "Shortcuts": return "Ярлыки";

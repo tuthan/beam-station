@@ -68,6 +68,10 @@ final class German {
             case "Couldn't reach the glasses.": return "Die Brille war nicht erreichbar.";
             case "The glasses didn't take that change.": return "Die Brille hat diese Änderung nicht übernommen.";
             case "Home puts the glasses back in 2D.": return "Der Startbildschirm schaltet die Brille zurück auf 2D.";
+            case "Switch to 3D": return "Zu 3D wechseln";
+            case "Switch to 2D": return "Zu 2D wechseln";
+            case "The glasses are in 3D.": return "Die Brille ist in 3D.";
+            case "The glasses are in 2D.": return "Die Brille ist in 2D.";
             case "HDMI Inputs": return "HDMI-Eingänge";
             case "Inputs": return "Eingänge";
             case "Shortcuts": return "Verknüpfungen";

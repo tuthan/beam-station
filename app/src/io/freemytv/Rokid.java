@@ -69,6 +69,13 @@ final class Rokid {
         return with(c, calls -> calls.call(PLUGGED, null) == 0 ? null : readAll(calls));
     }
 
+    /** The glasses' display mode, or -1 when no glasses are plugged in or the service can't be reached. */
+    static int mode(Context c) {
+        if (!available()) return -1;
+        Integer mode = with(c, calls -> calls.call(PLUGGED, null) == 0 ? -1 : calls.call(GET_MODE, null));
+        return mode == null ? -1 : mode;
+    }
+
     static State setMode(Context c, int mode) {
         return set(c, SET_MODE, mode);
     }
