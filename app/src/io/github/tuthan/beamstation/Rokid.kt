@@ -197,12 +197,13 @@ internal object Rokid {
         }
     }
 
-    /** Looked up once per process (on the calls' thread); the log says which way the calls go. */
+    /**
+     * Looked up once per process (on the calls' thread), and again after the service restarts (its old binder dies);
+     * without access it stays ADB. The log says which way the calls go.
+     */
     private fun binder(): IBinder? {
-        if (binderTried) {
-            val b = binder
-            return if (b != null && b.isBinderAlive) b else null
-        }
+        val known = binder
+        if (binderTried && (known == null || known.isBinderAlive)) return known
         binderTried = true
         binder = try {
             Class.forName("android.os.ServiceManager").getMethod("getService", String::class.java)
