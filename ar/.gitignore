@@ -1,0 +1,6 @@
+# Station AR's build and machine files (the repository's own .gitignore covers *.keystore and *.apk)
+local.properties
+.gradle/
+.kotlin/
+build/
+*/build/
