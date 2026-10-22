@@ -104,7 +104,11 @@ object Main {
             "OK"
         }
         is Command.Key -> {
-            pressKey(cmd.code)
+            when (cmd.phase) {
+                Command.Key.Phase.PRESS -> pressKey(cmd.code)
+                Command.Key.Phase.DOWN -> keyDown(cmd.code)
+                Command.Key.Phase.UP -> keyUp(cmd.code)
+            }
             "OK"
         }
         is Command.MoveTask -> {
@@ -216,9 +220,26 @@ object Main {
      */
     private fun pressKey(code: Int) {
         val now = SystemClock.uptimeMillis()
-        for (action in intArrayOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) {
-            inject(KeyEvent(now, SystemClock.uptimeMillis(), action, code, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0,
-                InputDevice.SOURCE_KEYBOARD))
-        }
+        for (action in intArrayOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP)) key(action, code, now)
+    }
+
+    /** When each key passed on down went down: its up carries the same time, as one press. */
+    private val downAt = HashMap<Int, Long>()
+
+    /**
+     * A key's down (or a device's own repeat of it: Android sees two downs in a row and counts the repeat) passed on
+     * as it happens. A down that stays down is repeated by Android itself, as for a key from the remote.
+     */
+    private fun keyDown(code: Int) {
+        key(KeyEvent.ACTION_DOWN, code, downAt.getOrPut(code) { SystemClock.uptimeMillis() })
+    }
+
+    private fun keyUp(code: Int) {
+        key(KeyEvent.ACTION_UP, code, downAt.remove(code) ?: SystemClock.uptimeMillis())
+    }
+
+    private fun key(action: Int, code: Int, downTime: Long) {
+        inject(KeyEvent(downTime, SystemClock.uptimeMillis(), action, code, 0, 0, KeyCharacterMap.VIRTUAL_KEYBOARD, 0, 0,
+            InputDevice.SOURCE_KEYBOARD))
     }
 }

@@ -5,7 +5,9 @@ package io.github.tuthan.stationar.core.keys
  * Menu always opens AR's panel. Home leaves AR (left to Android, it would look for a home screen on the app's display,
  * which can't have one, and do nothing). OK and Back are held back until they're released, or held for [longMs]: held OK
  * re-centres, held Back opens the screen's menu, and a short press is sent on to the app as a whole press.
- * Everything else (the D-pad, with its auto-repeat; media keys) goes straight to the app.
+ * Everything else (the D-pad, media keys) is [Result.forward]ed to the app as it happens, down and up: the Station
+ * delivers its remote's keys to the glasses' display whichever display has the focus, so a key let through would reach
+ * AR, not the app. Android repeats a held forwarded key itself.
  *
  * Keys Station AR sent itself come back through the filter: [onKey] passes those (`injected`) untouched. When no app
  * has the remote ([live] false), every key passes. Pure state: the caller supplies times and runs the actions.
@@ -23,12 +25,20 @@ class KeyFilter(private val longMs: Long = 500) {
         val resend: Int = 0,
         /** When to call [onTimeout] (a held key), as a time in ms, or 0. */
         val checkAt: Long = 0,
+        /** One half of a key press to send to the app now, or null. */
+        val forward: Forward? = null,
     )
+
+    /** A key going down (or a device's own repeat of it) or up, for the app. */
+    data class Forward(val code: Int, val down: Boolean)
 
     var live = false
         set(value) {
             field = value
-            if (!value) held = 0
+            if (!value) {
+                held = 0
+                forwarded.clear()
+            }
         }
 
     /** The OK or Back held back now (0: none), since [heldAt]; [fired] once its long action ran. */
@@ -36,16 +46,20 @@ class KeyFilter(private val longMs: Long = 500) {
     private var heldAt = 0L
     private var fired = false
 
+    /** Keys forwarded down and not yet up: their up goes to the app too. */
+    private val forwarded = HashSet<Int>()
+
     fun onKey(code: Int, down: Boolean, repeat: Int, timeMs: Long, injected: Boolean): Result {
         if (!live || injected) return PASS
         when (code) {
             MENU -> return if (down && repeat == 0) Result(true, Action.AR_MENU) else CONSUME
             HOME -> return if (!down) Result(true, Action.LEAVE) else CONSUME
             OK, ENTER, BACK -> {
+                if (!down && code in forwarded) return forward(code, false)
                 if (down) {
                     // Another of them while one is held back: it goes to the app as it is (down and up), so the held
                     // one's press isn't lost.
-                    if (held != 0 && held != code) return PASS
+                    if (held != 0 && held != code) return forward(code, true)
                     if (repeat > 0 || held == code) {
                         // A repeat of a key held back (from a device that repeats keys itself).
                         if (held == code && !fired && timeMs - heldAt >= longMs) return fire(code)
@@ -62,8 +76,17 @@ class KeyFilter(private val longMs: Long = 500) {
                 held = 0
                 return if (wasLong) CONSUME else Result(true, resend = code)
             }
-            else -> return PASS
+            else -> {
+                // Pressed before the app had the remote: it ends where it began.
+                if (!down && code !in forwarded) return PASS
+                return forward(code, down)
+            }
         }
+    }
+
+    private fun forward(code: Int, down: Boolean): Result {
+        if (down) forwarded.add(code) else forwarded.remove(code)
+        return Result(true, forward = Forward(code, down))
     }
 
     /** The time [Result.checkAt] asked for came: a key still held runs its long action. */

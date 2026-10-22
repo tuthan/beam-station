@@ -25,8 +25,9 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * Android apps in AR's screens: their virtual displays, the shell helper that starts them there, and the remote,
  * which follows your gaze. When you settle on an app's screen, the helper moves the focus to its display and the
- * remote drives the app directly; on any other screen the focus is back on AR (display 0). The key filter keeps Menu,
- * held OK and held Back for AR while an app has the remote.
+ * remote drives the app; on any other screen the focus is back on AR (display 0). The Station stamps its buttons' keys
+ * for the glasses' display whatever has the focus, so they reach AR's window ([onKey]) and are passed on to the app
+ * through the helper; the key filter keeps Menu, held OK and held Back for AR meanwhile.
  *
  * Main thread, except where noted; helper calls run on one worker.
  */
@@ -203,6 +204,12 @@ class AppScreens(private val context: Context, private val listener: Listener) :
 
     // MARK: - Keys (main thread, from KeyFilterService)
 
+    /**
+     * A key that reached AR's own window while an app has the remote (the Station sends its buttons' keys to the
+     * glasses' display, whichever display has the focus): true when it was taken here, for the app or for AR.
+     */
+    fun onKey(e: KeyEvent): Boolean = filter.live && keyHandler.onKey(e)
+
     private val keyHandler = KeyRouter.Handler { e ->
         if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return@Handler false
         if (filter.live && !helper.running) {
@@ -221,6 +228,10 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         if (r.resend != 0) {
             val code = r.resend
             background { helper.call(Command.Key(code)) }
+        }
+        r.forward?.let { f ->
+            val phase = if (f.down) Command.Key.Phase.DOWN else Command.Key.Phase.UP
+            background { helper.call(Command.Key(f.code, phase)) }
         }
         if (r.checkAt != 0L) {
             main.removeCallbacks(timeout)

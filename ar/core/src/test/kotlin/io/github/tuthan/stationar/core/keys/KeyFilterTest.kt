@@ -23,11 +23,34 @@ class KeyFilterTest {
     }
 
     @Test
-    fun theDpadAndItsRepeatsGoToTheApp() {
+    fun theDpadIsForwardedToTheAppAsItHappens() {
         val f = KeyFilter().apply { live = true }
+        for ((down, repeat) in listOf(true to 0, true to 1, false to 0)) {
+            val r = f.onKey(dpadLeft, down, repeat, 0, false)
+            assertTrue(r.consume)
+            assertEquals(KeyFilter.Forward(dpadLeft, down), r.forward)
+        }
+        // AR's own key, sent on by the helper, passes.
+        assertFalse(f.onKey(dpadLeft, true, 0, 10, true).consume)
+    }
+
+    @Test
+    fun aKeyPressedBeforeTheAppHadTheRemoteEndsWhereItBegan() {
+        val f = KeyFilter()
         assertFalse(f.onKey(dpadLeft, true, 0, 0, false).consume)
-        assertFalse(f.onKey(dpadLeft, true, 1, 400, false).consume)
-        assertFalse(f.onKey(dpadLeft, false, 0, 450, false).consume)
+        f.live = true
+        val up = f.onKey(dpadLeft, false, 0, 100, false)
+        assertFalse(up.consume)
+        assertNull(up.forward)
+    }
+
+    @Test
+    fun losingTheRemoteForgetsForwardedKeys() {
+        val f = KeyFilter().apply { live = true }
+        f.onKey(dpadLeft, true, 0, 0, false)
+        f.live = false
+        f.live = true
+        assertFalse(f.onKey(dpadLeft, false, 0, 100, false).consume)
     }
 
     @Test
@@ -84,7 +107,7 @@ class KeyFilterTest {
     }
 
     @Test
-    fun aKeyPressedBeforeTheAppHadTheRemoteEndsInTheApp() {
+    fun anOkPressedBeforeTheAppHadTheRemoteEndsWhereItBegan() {
         val f = KeyFilter()
         f.onKey(OK, true, 0, 0, false)
         f.live = true
@@ -117,8 +140,8 @@ class KeyFilterTest {
     fun backPressedWhileOkIsHeldGoesToTheAppAndOkStillCounts() {
         val f = KeyFilter().apply { live = true }
         assertTrue(f.onKey(OK, true, 0, 0, false).consume)
-        assertFalse(f.onKey(BACK, true, 0, 100, false).consume)
-        assertFalse(f.onKey(BACK, false, 0, 150, false).consume)
+        assertEquals(KeyFilter.Forward(BACK, true), f.onKey(BACK, true, 0, 100, false).forward)
+        assertEquals(KeyFilter.Forward(BACK, false), f.onKey(BACK, false, 0, 150, false).forward)
         assertEquals(OK, f.onKey(OK, false, 0, 200, false).resend)
     }
 }

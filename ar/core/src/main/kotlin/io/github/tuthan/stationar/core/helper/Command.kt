@@ -27,8 +27,13 @@ sealed class Command {
      */
     data class Focus(val display: Int, val x: Int, val y: Int) : Command()
 
-    /** A key press (down and up) to whatever display has the focus, and never another (Android 11 drops those). */
-    data class Key(val code: Int) : Command()
+    /**
+     * A key to whatever display has the focus, and never another (Android 11 drops those): a whole press (down and
+     * up), or one half of it, for a key passed on as it happens.
+     */
+    data class Key(val code: Int, val phase: Phase = Phase.PRESS) : Command() {
+        enum class Phase { PRESS, DOWN, UP }
+    }
 
     /** Moves a root task to another display. */
     data class MoveTask(val task: Int, val display: Int) : Command()
@@ -47,7 +52,7 @@ sealed class Command {
         Tasks -> "TASKS"
         is Launch -> "LAUNCH $display $component"
         is Focus -> "FOCUS $display $x $y"
-        is Key -> "KEY $code"
+        is Key -> if (phase == Key.Phase.PRESS) "KEY $code" else "KEY $code ${phase.name.lowercase()}"
         is MoveTask -> "MOVE_TASK $task $display"
         is RemoveTask -> "REMOVE_TASK $task"
         Front -> "FRONT"
@@ -71,7 +76,15 @@ sealed class Command {
                     if (p.size != 4) return null
                     Focus(int(1, 0..1000) ?: return null, int(2, 0..8192) ?: return null, int(3, 0..8192) ?: return null)
                 }
-                "KEY" -> if (p.size == 2) Key(int(1, 1..1000) ?: return null) else null
+                "KEY" -> {
+                    val phase = when {
+                        p.size == 2 -> Key.Phase.PRESS
+                        p.size == 3 && p[2] == "down" -> Key.Phase.DOWN
+                        p.size == 3 && p[2] == "up" -> Key.Phase.UP
+                        else -> return null
+                    }
+                    Key(int(1, 1..1000) ?: return null, phase)
+                }
                 "MOVE_TASK" -> {
                     if (p.size != 3) return null
                     MoveTask(int(1, 0..Int.MAX_VALUE) ?: return null, int(2, 0..1000) ?: return null)

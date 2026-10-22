@@ -325,6 +325,13 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     // MARK: - Keys
 
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        // The Station delivers its own buttons' keys to this display even while an app's screen has the focus: while
+        // an app has the remote, they go on to it from here.
+        if (apps.onKey(event)) return true
+        return super.dispatchKeyEvent(event)
+    }
+
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
             KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> {
