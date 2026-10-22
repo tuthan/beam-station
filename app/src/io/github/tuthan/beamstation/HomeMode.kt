@@ -270,12 +270,12 @@ internal object HomeMode {
                 record(adb, HashSet(failed))
                 busy(c, Ui.tr("Devolvendo o Início original…", "Restoring the original home screen…"))
                 val homeOk = restoreHome(adb, home)
-                if (XGIMI) xgimiGrants(adb, false)
-                if (ROKID) rokidGrants(adb, false)
                 restoreScreensaver(adb, s)
                 s = state(c)
+                // The permissions go back after the job (revokeGrants): taking location back ends the app's processes,
+                // and a switch cut off there ran again from the start (on the Rokid, without the home screen).
                 s.put("mode", ORIGINAL).put("since", System.currentTimeMillis()).put("homeReverted", false)
-                        .put("disabled", JSONArray(failed)).remove("keptOff")
+                        .put("disabled", JSONArray(failed)).put("revokeGrants", XGIMI || ROKID).remove("keptOff")
                 save(c, s)
                 if (failed.isEmpty() && homeOk) {
                     notice(c, Ui.tr("Modo original: Início, tela de descanso e apps de fábrica de volta.",
@@ -306,10 +306,10 @@ internal object HomeMode {
     private fun xgimiGrants(adb: Adb, on: Boolean) {
         try {
             val pm = "pm " + (if (on) "grant " else "revoke ") + PKG + " android.permission."
-            adb.shell(pm + "CHANGE_CONFIGURATION")
-            adb.shell(pm + "ACCESS_FINE_LOCATION")
             adb.shell("appops set " + PKG + " WRITE_SETTINGS " + (if (on) "allow" else "default"))
             adb.shell("appops write-settings")   // app-ops reach the disk lazily: a restart soon after would drop the set
+            adb.shell(pm + "CHANGE_CONFIGURATION")
+            adb.shell(pm + "ACCESS_FINE_LOCATION")   // last: taking it back ends the app's processes
         } catch (e: IOException) {
             AppLog.w("XGIMI permissions: " + e.message)
         }
@@ -354,6 +354,29 @@ internal object HomeMode {
             }
         } catch (e: IOException) {
             AppLog.w("xgimi stock home check: " + e.message)
+        }
+    }
+
+    /**
+     * After an Original switch, once its job is over (ModeJob): the permissions our mode gave the app go back. Taking
+     * location back ends the app's processes, so the mark is cleared first and nothing runs after it.
+     */
+    @JvmStatic
+    fun revokeGrants(app: Context) {
+        synchronized(RUN) {
+            val s = state(app)
+            if (!s.optBoolean("revokeGrants")) return
+            s.remove("revokeGrants")
+            save(app, s)
+            if (ORIGINAL != s.optString("mode")) return   // switched on again meanwhile: the app keeps them
+            try {
+                Adb.connect(app, 10_000, null).use { adb ->
+                    if (XGIMI) xgimiGrants(adb, false)
+                    if (ROKID) rokidGrants(adb, false)
+                }
+            } catch (e: IOException) {
+                AppLog.w("permissions: " + e.message)
+            }
         }
     }
 
