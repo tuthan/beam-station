@@ -2613,7 +2613,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         retarget(false)
         if (!changed) return
         val order = ArrayList<String>()
-        for (item in shelf) order.add(item.pkg)
+        for (item in shelf) order.add(item.pkg ?: "")
         val c = context.applicationContext
         LOADER.execute {
             // The saved list may hold more than the shelf shows (apps not installed, past the limit): the shown ones
@@ -3231,7 +3231,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
             Symbols.draw(context, c, lightButtons[i].symbol, cell.centerX(), cell.centerY(), 27 * k * s,
                 blend(tone(L_INK, 0xEBFFFFFF.toInt()), L_INK, f))
             if (f > 0.01f) {
-                val label = lightButtons[i].label
+                val label = lightButtons[i].label ?: ""
                 val half = lTip.measureText(label) / 2
                 val x = min(r.centerX(), CONTENT_R * k - half)
                 lTip.alpha = Math.round(255 * f)

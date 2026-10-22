@@ -84,7 +84,7 @@ class HomeActivity : Activity() {
 
     override fun dispatchKeyEvent(event: KeyEvent?): Boolean {
         val h = home
-        if (h != null && h.onKey(event)) return true
+        if (h != null && event != null && h.onKey(event)) return true
         return super.dispatchKeyEvent(event)
     }
 }
