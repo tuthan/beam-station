@@ -1,43 +1,68 @@
-"""Draws the home screen's day and night backgrounds (Pillow, numpy). Usage: python3 tools/make_backgrounds.py
+"""Draws a device's home screen day and night backgrounds (Pillow, numpy), into app/devices/DEVICE/assets/backgrounds.
+Usage: python3 tools/make_backgrounds.py xgimi|rokid
 Without photos: soft color blobs on a flat base, light enough for dark text by day, dark enough for white text at night.
 With pictures in backgrounds/ (JPEG or PNG): a day and a night version of each one (cropped to 16:9, location data
-removed), light-N.jpg and dark-N.jpg in app/assets/backgrounds/; the home screen shows one pair a day, in turn.
+removed), light-N.jpg and dark-N.jpg next to them; the home screen shows one pair a day, in turn.
 backgrounds/ and the photo versions are in .gitignore: your pictures stay on your computer."""
 import glob
 import json
 import os
+import sys
 
 import numpy as np
 from PIL import Image, ImageFilter, ImageOps
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-OUT = os.path.join(ROOT, "app/assets/backgrounds")
 PHOTOS = os.path.join(ROOT, "backgrounds")
 # Optional backgrounds/focus.json, {"file name": 0.4}: where the 16:9 crop sits on a portrait or square picture
 # (0 = top, 1 = bottom). The middle otherwise.
 FOCUS_FILE = os.path.join(PHOTOS, "focus.json")
 W, H = 1280, 720
 
-# (x, y, radius, color, strength): positions and radius as a fraction of the width / height.
-# Beam Home: a dark room and a projector's warm beam. By day amber light, rose and lilac; at night the beam's glow over
-# plum, wine and indigo. The projector starts in the dark look (Prefs.theme).
-LIGHT_BASE = (250, 246, 242)
-LIGHT = [
-    (0.86, 0.10, 0.55, (255, 214, 168), 0.95),   # amber light
-    (0.14, 0.16, 0.50, (252, 204, 206), 0.80),   # rose
-    (0.84, 0.90, 0.55, (226, 210, 248), 0.90),   # lilac
-    (0.14, 0.90, 0.50, (255, 230, 196), 0.85),   # honey
-    (0.52, 0.50, 0.40, (250, 228, 222), 0.55),   # blush
-]
-DARK_BASE = (10, 8, 16)
-DARK = [
-    (0.86, 0.10, 0.55, (112, 54, 26), 0.90),     # the beam's glow
-    (0.14, 0.14, 0.50, (54, 22, 70), 0.90),      # plum
-    (0.12, 0.92, 0.50, (82, 22, 48), 0.80),      # wine
-    (0.86, 0.90, 0.50, (30, 24, 80), 0.85),      # indigo
-    (0.52, 0.52, 0.40, (30, 14, 34), 0.60),
-]
-
+# (x, y, radius, color, strength): positions and radius as a fraction of the width / height. Both devices start in
+# the dark look (Prefs.theme).
+DEVICES = {
+    # A dark room and a projector's warm beam. By day amber light, rose and lilac; at night the beam's glow over plum,
+    # wine and indigo.
+    "xgimi": {
+        "light_base": (250, 246, 242),
+        "light": [
+            (0.86, 0.10, 0.55, (255, 214, 168), 0.95),   # amber light
+            (0.14, 0.16, 0.50, (252, 204, 206), 0.80),   # rose
+            (0.84, 0.90, 0.55, (226, 210, 248), 0.90),   # lilac
+            (0.14, 0.90, 0.50, (255, 230, 196), 0.85),   # honey
+            (0.52, 0.50, 0.40, (250, 228, 222), 0.55),   # blush
+        ],
+        "dark_base": (10, 8, 16),
+        "dark": [
+            (0.86, 0.10, 0.55, (112, 54, 26), 0.90),     # the beam's glow
+            (0.14, 0.14, 0.50, (54, 22, 70), 0.90),      # plum
+            (0.12, 0.92, 0.50, (82, 22, 48), 0.80),      # wine
+            (0.86, 0.90, 0.50, (30, 24, 80), 0.85),      # indigo
+            (0.52, 0.52, 0.40, (30, 14, 34), 0.60),
+        ],
+    },
+    # In the glasses black reads as see-through, so the night look stays near black with cool glows (cyan, blue,
+    # violet); by day aqua, periwinkle and lilac.
+    "rokid": {
+        "light_base": (242, 247, 252),
+        "light": [
+            (0.12, 0.16, 0.55, (186, 240, 234), 0.95),   # aqua
+            (0.88, 0.12, 0.50, (206, 214, 255), 0.90),   # periwinkle
+            (0.84, 0.90, 0.55, (226, 210, 255), 0.90),   # lilac
+            (0.14, 0.92, 0.50, (194, 226, 252), 0.90),   # sky
+            (0.52, 0.50, 0.40, (220, 244, 246), 0.55),   # ice
+        ],
+        "dark_base": (2, 4, 9),
+        "dark": [
+            (0.14, 0.12, 0.55, (4, 66, 84), 0.90),       # cyan
+            (0.88, 0.16, 0.50, (16, 30, 100), 0.90),     # blue
+            (0.86, 0.90, 0.50, (48, 22, 102), 0.85),     # violet
+            (0.12, 0.92, 0.50, (4, 52, 60), 0.75),       # teal
+            (0.52, 0.52, 0.40, (4, 10, 30), 0.60),
+        ],
+    },
+}
 
 def paint(base, blobs, seed):
     y, x = np.mgrid[0:H, 0:W].astype(np.float32)
@@ -81,9 +106,9 @@ def treat(photo, light):
     return img
 
 
-def photos():
+def photos(out_dir):
     names = sorted(f for f in glob.glob(os.path.join(PHOTOS, "*")) if f.lower().endswith((".jpg", ".jpeg", ".png")))
-    for old in glob.glob(os.path.join(OUT, "light-*.jpg")) + glob.glob(os.path.join(OUT, "dark-*.jpg")):
+    for old in glob.glob(os.path.join(out_dir, "light-*.jpg")) + glob.glob(os.path.join(out_dir, "dark-*.jpg")):
         os.remove(old)
     focus = json.load(open(FOCUS_FILE)) if os.path.exists(FOCUS_FILE) else {}
     for n, path in enumerate(names, 1):
@@ -91,16 +116,21 @@ def photos():
             img = ImageOps.exif_transpose(src).convert("RGB")   # re-saved without the original's metadata
         shot = crop(img, focus.get(os.path.basename(path), 0.5))
         for name, light in (("light", True), ("dark", False)):
-            out = os.path.join(OUT, "%s-%d.jpg" % (name, n))
+            out = os.path.join(out_dir, "%s-%d.jpg" % (name, n))
             treat(shot, light).save(out, quality=88, optimize=True)
             print("Wrote", os.path.relpath(out, ROOT), "(%d KB)" % (os.path.getsize(out) // 1024), "from", os.path.basename(path))
 
 
 def main():
-    os.makedirs(OUT, exist_ok=True)
-    photos()
-    for name, base, blobs, seed in (("light", LIGHT_BASE, LIGHT, 1), ("dark", DARK_BASE, DARK, 2)):
-        path = os.path.join(OUT, name + ".jpg")
+    if len(sys.argv) != 2 or sys.argv[1] not in DEVICES:
+        sys.exit("Usage: python3 tools/make_backgrounds.py " + "|".join(DEVICES))
+    dev = DEVICES[sys.argv[1]]
+    out_dir = os.path.join(ROOT, "app/devices", sys.argv[1], "assets/backgrounds")
+    os.makedirs(out_dir, exist_ok=True)
+    photos(out_dir)
+    for name, seed in (("light", 1), ("dark", 2)):
+        base, blobs = dev[name + "_base"], dev[name]
+        path = os.path.join(out_dir, name + ".jpg")
         paint(base, blobs, seed).save(path, quality=92, subsampling=0, optimize=True)
         print("Wrote", os.path.relpath(path, ROOT), "(%d KB)" % (os.path.getsize(path) // 1024))
 

@@ -1,16 +1,16 @@
-"""Draws the app icon, the TV banner and the settings symbol (Pillow). Usage: python3 tools/make_art.py"""
+"""Draws a device's app icon, TV banner and settings symbol (Pillow), into app/devices/DEVICE.
+Usage: python3 tools/make_art.py xgimi|rokid"""
 import math
 import os
+import sys
 
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 FONT = os.path.join(ROOT, "app/assets/fonts/InterVariable.ttf")
-NAME = "Beam Home"
-STOPS = [(0.0, (255, 196, 102)), (0.5, (242, 99, 94)), (1.0, (102, 44, 145))]   # amber light -> coral -> plum
 
 
-def gradient(w, h, angle=35):
+def gradient(w, h, stops, angle=35):
     """Diagonal three-color gradient."""
     img = Image.new("RGB", (w, h))
     px = img.load()
@@ -21,9 +21,9 @@ def gradient(w, h, angle=35):
     for y in range(h):
         for x in range(w):
             t = ((x * dx + y * dy) - lo) / (hi - lo)
-            for i in range(len(STOPS) - 1):
-                t0, c0 = STOPS[i]
-                t1, c1 = STOPS[i + 1]
+            for i in range(len(stops) - 1):
+                t0, c0 = stops[i]
+                t1, c1 = stops[i + 1]
                 if t <= t1:
                     f = (t - t0) / (t1 - t0)
                     px[x, y] = tuple(round(c0[k] + (c1[k] - c0[k]) * f) for k in range(3))
@@ -60,8 +60,8 @@ def fade(mask, top, bottom, a_top, a_bottom):
     return Image.composite(mask, Image.new("L", (s, s), 0), ramp.resize((s, s)))
 
 
-def glyph(s):
-    """The mark as a mask: a projector throwing its beam onto a screen with a sparkle."""
+def projector(s):
+    """XGIMI's mark as a mask: a projector throwing its beam onto a screen with a sparkle."""
     m = Image.new("L", (s, s), 0)
     beam = Image.new("L", (s, s), 0)
     ImageDraw.Draw(beam).polygon([(s * 0.465, s * 0.70), (s * 0.535, s * 0.70), (s * 0.76, s * 0.545), (s * 0.24, s * 0.545)], fill=255)
@@ -79,21 +79,55 @@ def glyph(s):
     return m
 
 
+def glasses(s):
+    """Rokid's mark as a mask: glasses showing a floating screen with a sparkle."""
+    m = Image.new("L", (s, s), 0)
+    cone = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(cone).polygon([(s * 0.36, s * 0.60), (s * 0.64, s * 0.60), (s * 0.75, s * 0.485), (s * 0.25, s * 0.485)], fill=255)
+    m.paste(fade(cone, s * 0.485, s * 0.60, 0.2, 0.5), (0, 0))
+    d = ImageDraw.Draw(m)
+    # the floating screen
+    d.rounded_rectangle((s * 0.22, s * 0.14, s * 0.78, s * 0.46), radius=int(s * 0.06), outline=255, width=int(s * 0.05))
+    sparkle(d, s * 0.5, s * 0.30, s * 0.095)
+    sparkle(d, s * 0.645, s * 0.22, s * 0.036)
+    # glasses: tinted lenses under one brow
+    for b in ((s * 0.14, s * 0.60, s * 0.475, s * 0.82), (s * 0.525, s * 0.60, s * 0.86, s * 0.82)):
+        d.rounded_rectangle(b, radius=int(s * 0.09), fill=96)
+        d.rounded_rectangle(b, radius=int(s * 0.09), outline=255, width=int(s * 0.045))
+    d.rounded_rectangle((s * 0.14, s * 0.60, s * 0.86, s * 0.645), radius=int(s * 0.0225), fill=255)
+    return m
+
+
+# Each build's name, gradient and mark.
+DEVICES = {
+    "xgimi": {
+        "name": "Beam Home",
+        "stops": [(0.0, (255, 196, 102)), (0.5, (242, 99, 94)), (1.0, (102, 44, 145))],   # amber light -> coral -> plum
+        "glyph": projector,
+    },
+    "rokid": {
+        "name": "Station Home",
+        "stops": [(0.0, (94, 234, 212)), (0.5, (59, 130, 246)), (1.0, (124, 58, 237))],   # aqua -> blue -> violet
+        "glyph": glasses,
+    },
+}
+
+
 def white(alpha):
     img = Image.new("RGBA", alpha.size, (255, 255, 255, 0))
     img.putalpha(alpha)
     return img
 
 
-def mark(size, bg=True):
+def mark(dev, size, bg=True):
     """The mark on the gradient squircle (bg) or alone (white)."""
     s = size * 4
-    alpha = glyph(s)
+    alpha = dev["glyph"](s)
     if not bg:
         return white(alpha).resize((size, size), Image.LANCZOS)
-    img = gradient(s, s).convert("RGBA")
+    img = gradient(s, s, dev["stops"]).convert("RGBA")
     img.alpha_composite(glow(s, s, s * 0.22, s * 0.12, s * 0.55, 0.28))
-    shadow = Image.new("RGBA", (s, s), STOPS[-1][1] + (0,))
+    shadow = Image.new("RGBA", (s, s), dev["stops"][-1][1] + (0,))
     shadow.putalpha(alpha.filter(ImageFilter.GaussianBlur(s * 0.022)).point(lambda v: int(v * 0.35)))
     img.alpha_composite(shadow, (0, int(s * 0.016)))
     img.alpha_composite(white(alpha))
@@ -117,15 +151,16 @@ def font(px, weight=600):
     return f
 
 
-def banner(w=640, h=360):
+def banner(dev, w=640, h=360):
     s = 4
     W, H = w * s, h * s
-    img = gradient(W, H, angle=20).convert("RGBA")
+    name = dev["name"]
+    img = gradient(W, H, dev["stops"], angle=20).convert("RGBA")
     img.alpha_composite(glow(W, H, W * 0.18, H * 0.05, H * 0.9, 0.22))
-    m = mark(int(h * 0.52 * s), bg=False)
+    m = mark(dev, int(h * 0.52 * s), bg=False)
     d = ImageDraw.Draw(img)
     f = font(int(h * 0.15 * s), 650)
-    box = d.textbbox((0, 0), NAME, font=f)
+    box = d.textbbox((0, 0), name, font=f)
     gap = int(w * 0.015 * s)
     x = (W - (m.width + gap + box[2] - box[0])) // 2
     my = (H - m.height) // 2
@@ -133,25 +168,32 @@ def banner(w=640, h=360):
     # one soft shadow under the mark and the name
     sh = Image.new("L", (W, H), 0)
     sh.paste(m.getchannel("A"), (x, my))
-    ImageDraw.Draw(sh).text((tx, ty), NAME, font=f, fill=255)
-    shadow = Image.new("RGBA", (W, H), STOPS[-1][1] + (0,))
+    ImageDraw.Draw(sh).text((tx, ty), name, font=f, fill=255)
+    shadow = Image.new("RGBA", (W, H), dev["stops"][-1][1] + (0,))
     shadow.putalpha(sh.filter(ImageFilter.GaussianBlur(H * 0.02)).point(lambda v: int(v * 0.3)))
     img.alpha_composite(shadow, (0, int(H * 0.01)))
     img.alpha_composite(m, (x, my))
-    d.text((tx, ty), NAME, font=f, fill=(255, 255, 255, 255))
+    d.text((tx, ty), name, font=f, fill=(255, 255, 255, 255))
     return img.resize((w, h), Image.LANCZOS)
 
 
-def symbol(size=240):
+def symbol(dev, size=240):
     """The mark alone, cropped, for Symbols (the settings page and the settings tile on the shelf)."""
-    m = mark(size, bg=False)
+    m = mark(dev, size, bg=False)
     return m.crop(m.getchannel("A").getbbox())
 
 
 if __name__ == "__main__":
-    res = os.path.join(ROOT, "app/res/drawable-nodpi")
+    if len(sys.argv) != 2 or sys.argv[1] not in DEVICES:
+        sys.exit("Usage: python3 tools/make_art.py " + "|".join(DEVICES))
+    device = sys.argv[1]
+    dev = DEVICES[device]
+    out = os.path.join(ROOT, "app/devices", device)
+    res = os.path.join(out, "res/drawable-nodpi")
+    symbols = os.path.join(out, "assets/symbols")
     os.makedirs(res, exist_ok=True)
-    mark(192).save(os.path.join(res, "icon.png"))
-    banner().save(os.path.join(res, "banner.png"))
-    symbol().save(os.path.join(ROOT, "app/assets/symbols/mark.png"))
+    os.makedirs(symbols, exist_ok=True)
+    mark(dev, 192).save(os.path.join(res, "icon.png"))
+    banner(dev).save(os.path.join(res, "banner.png"))
+    symbol(dev).save(os.path.join(symbols, "mark.png"))
     print("ok")
