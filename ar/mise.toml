@@ -1,0 +1,3 @@
+# The JDK Gradle, AGP and Kotlin run on (the same pin as paddock-android). Point JAVA_HOME at it: `mise where java`.
+[tools]
+java = "temurin-17.0.20+8"

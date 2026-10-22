@@ -1,0 +1,13 @@
+# Every entry has a review row in docs/dependency-reviews.md, written before the entry.
+[versions]
+agp = "9.3.3"
+kotlin = "2.4.20"
+junit = "4.13.2"
+
+[libraries]
+kotlin-test-junit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+junit = { module = "junit:junit", version.ref = "junit" }
+
+[plugins]
+android-application = { id = "com.android.application", version.ref = "agp" }
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
