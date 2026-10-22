@@ -87,17 +87,18 @@ final class HomeMode {
      * only XGIMI Home is turned off, and PRIVACY when asked for (Android keeps networks saved by a shared UID: their
      * creator matches no package).
      * Its chooser (xgimiframeworkui) opens XGIMI Home whenever it is on, and answers the HOME query itself, so the
-     * stock home screen is named here.
+     * stock home screen is named here. Only in the XGIMI build (Config.DEVICE), on an XGIMI.
      */
-    static final boolean XGIMI = "XGIMI".equalsIgnoreCase(Build.BRAND);
+    static final boolean XGIMI = Config.DEVICE.equals("xgimi") && "XGIMI".equalsIgnoreCase(Build.BRAND);
     private static final String XGIMI_HOME = "com.xgimi.home/com.xgimi.module.cellview.home.ui.HomeActivity";
 
     /**
      * Rokid Station (the box for Rokid's AR glasses): its ROM refuses `pm disable-user` for every system app, so nothing
      * is turned off; Station Home only takes the home screen. Rokid's launcher stays on and keeps HOME away from us through
-     * plugging the glasses and a reboot (tested). Its apps share the system UID.
+     * plugging the glasses and a reboot (tested). Its apps share the system UID. Only in the Rokid build
+     * (Config.DEVICE), on a Rokid.
      */
-    static final boolean ROKID = "Rokid".equalsIgnoreCase(Build.BRAND);
+    static final boolean ROKID = Config.DEVICE.equals("rokid") && "Rokid".equalsIgnoreCase(Build.BRAND);
 
     /** The voice assistant, only with disable_assistant=true in config.properties (the mic button stops working). */
     static final String[] ASSISTANT = {"com.google.android.katniss", "com.android.hotwordenrollment.okgoogle"};

@@ -296,7 +296,7 @@ final class Shaders {
     private static final int[] NIGHT, DAWN, DAY, SUNSET, DUSK;
 
     static {
-        if (HomeMode.ROKID) {
+        if (Config.DEVICE.equals("rokid")) {
             // The glasses: in them black is see-through and bright colors glare, so every phase stays near black with
             // cool light (cyan, blue, violet).
             NIGHT = new int[] {0x020409, 0x0A2234, 0x1E8C9C};
