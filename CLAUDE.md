@@ -1,7 +1,7 @@
 # Beam Home and Station Home: notes for Claude
 
 A home screen for Google TV and Android TV that replaces the stock one, plus a settings app that switches between
-it and the TV's original home screen. A plain Android app in Java and Kotlin (the Java is being converted), built without Gradle by `build.sh`. One tree builds two flavours: **Beam Home** for XGIMI projectors (`device=xgimi`, the default) and **Station Home** for the Rokid Station (`device=rokid`). The name is in all of the UI text (`Config.APP_NAME` in the Java sources, `@string/app_name` in the manifest, the art in `app/devices/<device>`); the package is `io.github.tuthan.beamstation` (code in `app/src/io/github/tuthan/beamstation`), the log tag `BeamStation`, the key `beamstation.keystore`. It began as a fork of Free My TV (`io.freemytv`), which is a separate app to Android: if it is on the device, it goes back to *Original* and is uninstalled before this one is switched on.
+it and the TV's original home screen. A plain Android app in Kotlin, built without Gradle by `build.sh`. One tree builds two flavours: **Beam Home** for XGIMI projectors (`device=xgimi`, the default) and **Station Home** for the Rokid Station (`device=rokid`). The name is in all of the UI text (`Config.APP_NAME` in the code, `@string/app_name` in the manifest, the art in `app/devices/<device>`); the package is `io.github.tuthan.beamstation` (code in `app/src/io/github/tuthan/beamstation`), the log tag `BeamStation`, the key `beamstation.keystore`. It began as a fork of Free My TV (`io.freemytv`), which is a separate app to Android: if it is on the device, it goes back to *Original* and is uninstalled before this one is switched on.
 
 The person you're helping may not be technical. Keep it short and friendly, say what you're about to do on their TV
 before you do it, and let them do the taps on the TV.
@@ -100,12 +100,12 @@ screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
   `Power`; `Wifi` and `Bluetooth` for both). On any other TV either build is a plain home screen. The sky (`Shaders`)
   follows `Config.DEVICE`: warm for the projector's dark room, near black and cool for the glasses.
 - Never write the app's name in the code: join `Config.APP_NAME` as a constant
-  (`"Measuring " + Config.APP_NAME + "…"`), and use the same expression as the case label in `Spanish.java`,
-  `German.java` and `Russian.java`.
-- Kotlin (JVM target 1.8) and Java 8 language level, minSdk 28 (Android 9), targetSdk 33. No Gradle; the only library is
-  the Kotlin standard library, shrunk by R8 (`-dontobfuscate -dontoptimize`, the app kept whole). New code is Kotlin.
-  While Java remains, a Kotlin function that Java calls takes nullable parameters (`String?`) wherever Java could pass
-  null, and Java-facing statics are `@JvmStatic` in an `object`.
+  (`"Measuring " + Config.APP_NAME + "…"`), and use the same expression as the case label in `Spanish.kt`,
+  `German.kt` and `Russian.kt`.
+- Kotlin (JVM target 1.8), minSdk 28 (Android 9), targetSdk 33. No Gradle; the only library is
+  the Kotlin standard library, shrunk by R8 (`-dontobfuscate -dontoptimize`, the app kept whole). Sort with
+  `sortWith(compareBy({ … }, { … }))` or a `Comparator { a, b -> … }`, not the inline `sortedBy`/`thenBy`: R8 prints
+  "malformed kotlin.Metadata" for the classes they inline. The build output stays free of those lines.
   Android 9 has no RenderNode (`Recording` wraps it, with a Picture there) and no `cmd role`. On Android 9 to 11
   (`Ui.LEGACY`) the home screen skips the GPU layers, draws blurred shadows from cached bitmaps (`Shadows`) and
   rounds images with a shader instead of clipPath: their GPUs (a Mi Box 3's Mali-450) choked on those.
@@ -124,11 +124,12 @@ screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
   process. `Watchdog` goes back to the stock home screen after 3 crashes in 5 minutes.
 - After every `appops set` over ADB, run `appops write-settings` as its own shell call: app-ops reach the disk lazily,
   and a restart soon after the `set` drops it.
-- On-screen text: `Ui.tr("pt", "en")`, with the Spanish, German and Russian in `Spanish.java`, `German.java` and
-  `Russian.java` (keyed by the English); text built at runtime uses `Ui.tr(pt, en, es)`, and its German and Russian
+- On-screen text: `Ui.tr("pt", "en")`, with the Spanish, German and Russian in `Spanish.kt`, `German.kt` and
+  `Russian.kt` (keyed by the English); text built at runtime uses `Ui.tr(pt, en, es)`, and its German and Russian
   come from those files too (patterns for the parts built at runtime). Add them all. Comments in English, short, only where the why
   isn't obvious.
-- Settings come from `config.properties` through the generated `out/gen/io/github/tuthan/beamstation/Config.java` (never edit that).
+- Settings come from `config.properties` through the generated `out/gen/io/github/tuthan/beamstation/Config.kt` (never edit that;
+  `R.kt` beside it holds the resource ids, from aapt2's `R.txt`).
   What the person changes on the TV (`Prefs`: Home Settings, Shelf) wins over those first values.
 - After any change, `./build.sh` and `DEVICE=rokid ./build.sh` must end with `Built BeamHome.apk` and
   `Built StationHome.apk`.

@@ -151,7 +151,7 @@ internal object Ui {
         if (de) German.text(english) else if (ru) Russian.text(english) else if (es) Spanish.text(english)
         else if (en) english else pt
 
-    /** German comes from German.java here too (keyed by the English, with patterns for text built at runtime). */
+    /** German comes from German.kt here too (keyed by the English, with patterns for text built at runtime). */
     @JvmStatic
     fun tr(pt: String, english: String, spanish: String): String =
         if (de) German.text(english) else if (ru) Russian.text(english) else if (es) spanish else if (en) english else pt

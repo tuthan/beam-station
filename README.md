@@ -128,7 +128,7 @@ It's your code, and Claude Code finds its way around it. Try:
 
 ## How it works
 
-- **A plain Android app, no Gradle.** [`build.sh`](build.sh) runs aapt2 → kotlinc → javac → R8 → zipalign → apksigner and makes a 1.5 MB APK. The code is moving from Java to Kotlin (2.4.20, from JetBrains' release in `~/.local/share/kotlin/2.4.20`); the Kotlin standard library is the one library, and R8 keeps only what the app uses.
+- **A plain Android app, no Gradle.** [`build.sh`](build.sh) runs aapt2 → kotlinc → R8 → zipalign → apksigner and makes a 1.5 MB APK. The code is Kotlin (2.4.20, from JetBrains' release in `~/.local/share/kotlin/2.4.20`); the Kotlin standard library is the one library, and R8 keeps only what the app uses.
 - **It uses the TV's own ADB, from inside the TV.** The app connects to `127.0.0.1:5555` with its own key (that's the *Allow USB debugging?* prompt) and runs the same commands you would: `cmd package set-home-activity`, `settings put secure screensaver_components`, `pm disable-user`. Nothing listens to the network.
 - **Drawn by hand on one Canvas**, with Android 13 shaders for the frosted glass and the sky (plain fills on Android 9 to 12, with lighter shadows and no GPU layers on 9 to 11 for their older GPUs).
 - **A safety net.** A watchdog in a separate process brings back the stock home screen after three crashes in five minutes, and a boot check keeps your choice after TV updates.
@@ -136,18 +136,18 @@ It's your code, and Claude Code finds its way around it. Try:
 
 | File | What it is |
 |---|---|
-| [`HomeView.java`](app/src/io/github/tuthan/beamstation/HomeView.java) | The home screen |
-| [`HomeMode.java`](app/src/io/github/tuthan/beamstation/HomeMode.java) | Switching between the app's home screen and Original |
-| [`Adb.java`](app/src/io/github/tuthan/beamstation/Adb.java) | The TV's own ADB, from inside the TV |
-| [`Recs.java`](app/src/io/github/tuthan/beamstation/Recs.java) | The picks (TMDB) |
-| [`HomeData.java`](app/src/io/github/tuthan/beamstation/HomeData.java) | Weather and prices |
-| [`HomeApps.java`](app/src/io/github/tuthan/beamstation/HomeApps.java) | The shelf, inputs and All Apps |
-| [`DreamView.java`](app/src/io/github/tuthan/beamstation/DreamView.java) | The screensaver |
-| [`SettingsActivity.java`](app/src/io/github/tuthan/beamstation/SettingsActivity.java) | The settings screen (the app's icon) |
+| [`HomeView.kt`](app/src/io/github/tuthan/beamstation/HomeView.kt) | The home screen |
+| [`HomeMode.kt`](app/src/io/github/tuthan/beamstation/HomeMode.kt) | Switching between the app's home screen and Original |
+| [`Adb.kt`](app/src/io/github/tuthan/beamstation/Adb.kt) | The TV's own ADB, from inside the TV |
+| [`Recs.kt`](app/src/io/github/tuthan/beamstation/Recs.kt) | The picks (TMDB) |
+| [`HomeData.kt`](app/src/io/github/tuthan/beamstation/HomeData.kt) | Weather and prices |
+| [`HomeApps.kt`](app/src/io/github/tuthan/beamstation/HomeApps.kt) | The shelf, inputs and All Apps |
+| [`DreamView.kt`](app/src/io/github/tuthan/beamstation/DreamView.kt) | The screensaver |
+| [`SettingsActivity.kt`](app/src/io/github/tuthan/beamstation/SettingsActivity.kt) | The settings screen (the app's icon) |
 | [`Prefs.kt`](app/src/io/github/tuthan/beamstation/Prefs.kt) | Settings changed on the TV |
 | [`Watchdog.kt`](app/src/io/github/tuthan/beamstation/Watchdog.kt) | The safety net |
-| [`Xgimi.java`](app/src/io/github/tuthan/beamstation/Xgimi.java) | XGIMI projectors: focus, keystone, speaker, eco, battery, language |
-| [`Rokid.java`](app/src/io/github/tuthan/beamstation/Rokid.java) | The Rokid glasses' display service |
+| [`Xgimi.kt`](app/src/io/github/tuthan/beamstation/Xgimi.kt) | XGIMI projectors: focus, keystone, speaker, eco, battery, language |
+| [`Rokid.kt`](app/src/io/github/tuthan/beamstation/Rokid.kt) | The Rokid glasses' display service |
 | [`Power.kt`](app/src/io/github/tuthan/beamstation/Power.kt) | The Rokid Station's battery, timeouts and sleep timer |
 
 ## Privacy
