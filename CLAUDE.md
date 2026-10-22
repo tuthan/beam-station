@@ -32,7 +32,8 @@ before you do it, and let them do the taps on the TV.
 5. **Build:** `./build.sh` → `FreeMyTV.apk`. Keep `freemytv.keystore`: updates must be signed with the same key.
 6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
    allow*. Then `adb install -r FreeMyTV.apk`. On TCL, also `adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"`
-   (some firmware calls the operation `APP_AUTO_START`; this tries both):
+   (some firmware calls the operation `APP_AUTO_START`; this tries both), then `adb shell appops write-settings`
+   (app-ops reach the disk lazily, and a restart soon after the `set` drops it):
    TCL's `TclAppBoot` blocks background jobs by default, so the switch (and the watchdog) never run. The log shows
    `forbid bind service ... ModeJob`. Some TCL firmware has neither (a 2024 MediaTek Google TV, Android 14, has no
    `TclAppBoot`): both names answer `Unknown operation string`, and nothing needs allowing.
