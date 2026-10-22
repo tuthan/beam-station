@@ -19,21 +19,23 @@ FOCUS_FILE = os.path.join(PHOTOS, "focus.json")
 W, H = 1280, 720
 
 # (x, y, radius, color, strength): positions and radius as a fraction of the width / height.
-LIGHT_BASE = (246, 244, 250)
+# Station Home: in the glasses black reads as see-through, so the night look stays near black with cool glows (cyan,
+# blue, violet); by day aqua, periwinkle and lilac. The Station starts in the dark look (Prefs.theme).
+LIGHT_BASE = (242, 247, 252)
 LIGHT = [
-    (0.12, 0.18, 0.55, (255, 211, 176), 0.95),   # peach
-    (0.88, 0.12, 0.50, (255, 192, 212), 0.85),   # pink
-    (0.82, 0.88, 0.55, (210, 200, 255), 0.95),   # lavender
-    (0.15, 0.92, 0.50, (186, 224, 250), 0.90),   # sky
-    (0.52, 0.50, 0.40, (214, 240, 226), 0.55),   # mint
+    (0.12, 0.16, 0.55, (186, 240, 234), 0.95),   # aqua
+    (0.88, 0.12, 0.50, (206, 214, 255), 0.90),   # periwinkle
+    (0.84, 0.90, 0.55, (226, 210, 255), 0.90),   # lilac
+    (0.14, 0.92, 0.50, (194, 226, 252), 0.90),   # sky
+    (0.52, 0.50, 0.40, (220, 244, 246), 0.55),   # ice
 ]
-DARK_BASE = (9, 11, 22)
+DARK_BASE = (2, 4, 9)
 DARK = [
-    (0.15, 0.12, 0.55, (44, 40, 122), 0.95),     # indigo
-    (0.88, 0.18, 0.50, (86, 44, 138), 0.85),     # violet
-    (0.12, 0.92, 0.50, (12, 84, 108), 0.85),     # teal
-    (0.86, 0.90, 0.50, (118, 36, 98), 0.70),     # magenta
-    (0.52, 0.52, 0.40, (22, 30, 80), 0.60),
+    (0.14, 0.12, 0.55, (4, 66, 84), 0.90),       # cyan
+    (0.88, 0.16, 0.50, (16, 30, 100), 0.90),     # blue
+    (0.86, 0.90, 0.50, (48, 22, 102), 0.85),     # violet
+    (0.12, 0.92, 0.50, (4, 52, 60), 0.75),       # teal
+    (0.52, 0.52, 0.40, (4, 10, 30), 0.60),
 ]
 
 

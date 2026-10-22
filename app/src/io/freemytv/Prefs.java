@@ -111,9 +111,12 @@ final class Prefs {
 
     static void setTemperature(String v) { put("temperature", v); }
 
-    /** "auto" (dark from sunset to sunrise), "light" or "dark". */
+    /**
+     * "auto" (dark from sunset to sunrise), "light" or "dark". The glasses start dark: in them black is see-through and
+     * white glares.
+     */
     static String theme() {
-        String v = sp().getString("theme", "auto");
+        String v = sp().getString("theme", "dark");
         return v.equals("light") || v.equals("dark") ? v : "auto";
     }
 

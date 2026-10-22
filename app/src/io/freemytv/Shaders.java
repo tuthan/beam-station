@@ -292,12 +292,14 @@ final class Shaders {
         }
     }
 
-    // Sky phases through the day.
-    private static final int[] NIGHT = {0x070B1E, 0x16225A, 0x4B2F8F};
-    private static final int[] DAWN = {0x24183F, 0xE89A55, 0xF6D59A};
-    private static final int[] DAY = {0x1E57C8, 0x4FB9EC, 0x9EE2EE};
-    private static final int[] SUNSET = {0x2E1650, 0xE2546C, 0xF39A4F};
-    private static final int[] DUSK = {0x10173A, 0x36348A, 0x8A4BB0};
+    // Sky phases through the day, Station Home's: in the glasses black is see-through and bright colors glare, so every
+    // phase stays near black with cool light (cyan, blue, violet). Before Android 13 only the first two show, as a
+    // gradient.
+    private static final int[] NIGHT = {0x020409, 0x0A2234, 0x1E8C9C};
+    private static final int[] DAWN = {0x04060F, 0x182850, 0x5CC8C0};
+    private static final int[] DAY = {0x041020, 0x0E3A5C, 0x38B8D8};
+    private static final int[] SUNSET = {0x07040F, 0x281850, 0xB45CC8};
+    private static final int[] DUSK = {0x03050E, 0x18184A, 0x6A54D8};
 
     /**
      * Palette for the sun's current position at your location. Uses the sunrise and sunset times from the last weather
