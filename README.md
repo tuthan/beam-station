@@ -4,6 +4,8 @@
 
 # Free My TV
 
+> This build is installed as **Beam Home**: the name on the device and in every sentence of its screens. The package (`io.freemytv`), the log tag (`FreeMyTV`) and the signing key are the same as Free My TV's, so it updates over it.
+
 **A fast, ad-free home screen for Google TV, LG and Samsung TVs.**
 
 Trending picks from your own apps, the weather at a glance, and a look that follows the sunset.<br>
