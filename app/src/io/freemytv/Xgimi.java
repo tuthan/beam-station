@@ -45,9 +45,12 @@ final class Xgimi {
     private static final long LEND_MS = 3000;
 
     private static final ExecutorService WORK = Executors.newSingleThreadExecutor();
+    /** The stock home check (ADB), apart from WORK so the language never waits on it. */
+    private static final ExecutorService CHECK = Executors.newSingleThreadExecutor();
+    private static final long HOME_CHECK_MS = 60_000;
     private static final Handler MAIN = new Handler(Looper.getMainLooper());
     private static volatile boolean focused, lent, verifyAsked;
-    private static volatile long lentAt;
+    private static volatile long lentAt, homeCheckedAt;
 
     static boolean hasFocusKeystone(Context c) {
         return HomeMode.XGIMI && c.getPackageManager().resolveService(afAk(0), 0) != null;
@@ -348,6 +351,15 @@ final class Xgimi {
         if (!HomeMode.XGIMI || !hasFocus) return;
         if (!lent) heal(c.getApplicationContext());
         else if (SystemClock.elapsedRealtime() - lentAt >= LEND_MS) keepLanguage(c);
+        homeCheck(c.getApplicationContext());
+    }
+
+    /** XGIMI Home stays off (HomeMode.xgimiHomeCheck): at most once a minute, when our windows get focus. */
+    private static void homeCheck(Context app) {
+        long now = SystemClock.elapsedRealtime();
+        if (homeCheckedAt != 0 && now - homeCheckedAt < HOME_CHECK_MS) return;
+        homeCheckedAt = now;
+        CHECK.execute(() -> HomeMode.xgimiHomeCheck(app));
     }
 
     /** A Free My TV screen goes to the background (an app is opening): the app gets our language. */

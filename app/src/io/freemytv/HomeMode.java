@@ -420,6 +420,28 @@ final class HomeMode {
         }
     }
 
+    /**
+     * XGIMI: XGIMI Home turned back on behind our back (on global ROMs xrmservice does it on some remote keys; note 09)
+     * goes off again. Asked when our windows get focus (Xgimi), since verify can't run from a broadcast on this ROM.
+     * Not during a switch: Original turns it on itself.
+     */
+    static void xgimiHomeCheck(Context app) {
+        JSONObject s = state(app);
+        String home = packageOf(XGIMI_HOME);
+        long busyAt = s.optLong("busyAt"), now = SystemClock.elapsedRealtime();
+        boolean busy = !s.optString("busy").isEmpty() && now >= busyAt && now - busyAt < 10 * 60_000L;
+        if (!XGIMI || busy || !FREE.equals(s.optString("mode")) || s.optBoolean("homeReverted")
+                || !stringList(s, "disabled").contains(home)) return;
+        try (Adb adb = Adb.connect(app, 10_000, null)) {
+            if (packages(adb, "-d").contains(home)) return;
+            String out = adb.shell("pm disable-user --user 0 " + home);
+            AppLog.w(out.contains("disabled-user") ? "xgimi: stock home came back, turned off again"
+                    : "xgimi: stock home came back, could not turn it off: " + out.trim());
+        } catch (IOException e) {
+            AppLog.w("xgimi stock home check: " + e.getMessage());
+        }
+    }
+
     /** The recorded home screen; without one, Google TV's; without that, the system picks (we leave the role). */
     private static boolean restoreHome(Adb adb, String home) throws IOException {
         if (home.isEmpty() && adb.shell("pm path " + packageOf(GOOGLE_HOME)).contains("package:")) home = GOOGLE_HOME;
