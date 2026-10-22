@@ -1,7 +1,7 @@
 # Free My TV: notes for Claude
 
 A home screen for Google TV and Android TV that replaces the stock one, plus a settings app that switches between
-Free My TV and the TV's original home screen. A plain Android app in Java and Kotlin (the Java is being converted), built without Gradle by `build.sh`. **This flavour is called Beam Home** on the device and in all of its UI text (the Java sources, the manifest, the resource strings and the art from `tools/make_art.py`); the package, the log tag and the signing key stay Free My TV's.
+Free My TV and the TV's original home screen. A plain Android app in Java and Kotlin (the Java is being converted), built without Gradle by `build.sh`. One tree builds two flavours: **Beam Home** for XGIMI projectors (`device=xgimi`, the default) and **Station Home** for the Rokid Station (`device=rokid`). The name is in all of the UI text (`Config.APP_NAME` in the Java sources, `@string/app_name` in the manifest, the art in `app/devices/<device>`); the package, the log tag and the signing key stay Free My TV's.
 
 The person you're helping may not be technical. Keep it short and friendly, say what you're about to do on their TV
 before you do it, and let them do the taps on the TV.
@@ -24,9 +24,10 @@ before you do it, and let them do the taps on the TV.
    A v4 read access token (starts with `eyJ`) works too: `Recs` sends it as `Authorization: Bearer`, which keeps the key out of URLs.
    Without a key everything works except the picks and the screensaver photos.
    The same goes for the optional `watchmode_key` (free, watchmode.com; makes picks open the title's page): theirs, secret, only in `config.properties`.
-5. **Build:** `./build.sh` → `FreeMyTV.apk`. Keep `freemytv.keystore`: updates must be signed with the same key.
+5. **Build:** `./build.sh` → `BeamHome.apk` (XGIMI), or `DEVICE=rokid ./build.sh` → `StationHome.apk` (Rokid Station;
+   `device=rokid` in `config.properties` does the same). Keep `freemytv.keystore`: updates must be signed with the same key.
 6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
-   allow*. Then `adb install -r FreeMyTV.apk`. On TCL, also `adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"`
+   allow*. Then `adb install -r BeamHome.apk` (or `StationHome.apk`). On TCL, also `adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"`
    (some firmware calls the operation `APP_AUTO_START`; this tries both), then `adb shell appops write-settings`
    (app-ops reach the disk lazily, and a restart soon after the `set` drops it):
    TCL's `TclAppBoot` blocks background jobs by default, so the switch (and the watchdog) never run. The log shows
@@ -74,6 +75,21 @@ XGIMI projectors (China ROM, GMUI): their chooser (`xgimiframeworkui`) opens XGI
 the default home, so Free My TV mode turns off `com.xgimi.home` and nothing else (plus `HomeMode.PRIVACY`, only with
 `disable_telemetry=true`). Every XGIMI app runs as the shared system UID that also saved the Wi-Fi networks; Android
 keeps those (their creator, `android.uid.system`, matches no package), but don't turn off other XGIMI packages. *TV Settings* opens XGIMI's panel (its `SettingService`).
+Beam Home adds English screens for what XGIMI's Chinese ones do: Wi-Fi, Bluetooth, Picture (`Picture`, the Play 6) and
+Time Zone (`Zones`), and in the drawer focus, keystone, speaker and eco mode (`Xgimi`), with the Play 6's battery on the
+home screen.
+
+Rokid Station (the Android 11 box for Rokid's AR glasses, Amlogic): its ROM refuses `pm disable-user`, `pm enable`,
+`pm hide` and `pm uninstall` for every system app (`Failure [not support for 0]`), so Free My TV mode turns nothing
+off there and only takes the home screen; Rokid's launcher stays on (HOME stays ours through a glasses replug and a
+reboot). *TV Settings* opens Rokid's Settings. Taking the glasses off puts the box to sleep and drops Wi-Fi and ADB:
+keep them on (or the proximity sensor covered) while you work from the computer. The glasses' 2D/3D, refresh rate,
+scene and speaker mode are Rokid's `rokid_display` service (`adb shell dumpsys rokid_display`); `Rokid` calls it over
+the binder (the Station's SELinux is permissive) or else the TV's ADB, and the settings' Glasses page and the drawer's
+2D/3D button use it. A new mode or refresh rate retrains HDMI for about 3 s: read back only once the glasses return.
+The Station runs on a battery: `Power` shows it on the home screen and keeps the screensaver and sleep timeouts
+(`settings put` over the TV's ADB) and a sleep timer, since Rokid's Settings has neither. Wi-Fi and Bluetooth have their own
+screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
 
 
 **Uninstalled while in Free My TV mode?** The apps it turned off stay off. Bring them back with
@@ -83,6 +99,21 @@ keeps those (their creator, `android.uid.system`, matches no package), but don't
 
 ## The code
 
+- Two devices, one tree. `build.sh` takes the device from `DEVICE` in the environment, else `device=` in
+  `config.properties`, else `xgimi` (anything else stops it), writes `Config.DEVICE` and `Config.APP_NAME`, links
+  `app/devices/<device>/res` over `app/res` and adds `app/devices/<device>/assets` to `app/assets`, and names the APK
+  `BeamHome.apk` or `StationHome.apk`. A device's folder holds its icon and banner (`res/drawable-nodpi`), its strings
+  (`res/values`, `res/values-ru`: the name and the remote buttons service's description), its settings mark
+  (`assets/symbols/mark.png`) and its day and night backgrounds (`assets/backgrounds`); every other symbol is shared
+  in `app/assets/symbols`. `python3 tools/make_art.py <device>` and `python3 tools/make_backgrounds.py <device>` draw
+  them (each has a `DEVICES` table: name, gradient, mark, background colors).
+- Device code runs only in its own build and on its own device: `HomeMode.XGIMI` and `HomeMode.ROKID` check both
+  `Config.DEVICE` and the brand, and everything device-only goes through them (`Xgimi`, `Picture`, `Zones`; `Rokid`,
+  `Power`; `Wifi` and `Bluetooth` for both). On any other TV either build is plain Free My TV. The sky (`Shaders`)
+  follows `Config.DEVICE`: warm for the projector's dark room, near black and cool for the glasses.
+- Never write the app's name in the code: join `Config.APP_NAME` as a constant
+  (`"Measuring " + Config.APP_NAME + "…"`), and use the same expression as the case label in `Spanish.java`,
+  `German.java` and `Russian.java`.
 - Kotlin (JVM target 1.8) and Java 8 language level, minSdk 28 (Android 9), targetSdk 33. No Gradle; the only library is
   the Kotlin standard library, shrunk by R8 (`-dontobfuscate -dontoptimize`, the app kept whole). New code is Kotlin.
   While Java remains, a Kotlin function that Java calls takes nullable parameters (`String?`) wherever Java could pass
@@ -128,7 +159,8 @@ keeps those (their creator, `android.uid.system`, matches no package), but don't
   the key to the TV. Sony ships its own Apple TV build, `com.apple.atve.sony.appletv`.
   Xiaomi projectors made by Formovie (Fengmi; L1, MediaTek, Google TV 14 tested) send the same `KEYCODE_STEM_1` for
   Netflix (`RemoteKeys.STEM_NETFLIX`); their YouTube button goes to MediaTek's `GlobalKeyReceiver` and stays with the system.
-- After any change, `./build.sh` must end with `Built FreeMyTV.apk`.
+- After any change, `./build.sh` and `DEVICE=rokid ./build.sh` must end with `Built BeamHome.apk` and
+  `Built StationHome.apk`.
 
 ## Always
 

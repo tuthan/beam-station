@@ -1,12 +1,12 @@
 <div align="center">
 
-<img src="app/res/drawable-nodpi/icon.png" width="96" alt="">
+<img src="app/devices/xgimi/res/drawable-nodpi/icon.png" width="96" alt=""> <img src="app/devices/rokid/res/drawable-nodpi/icon.png" width="96" alt="">
 
-# Beam Home
+# Beam Home and Station Home
 
-> Beam Home is [Free My TV](https://github.com/simbasjungles/free-my-tv) made for the XGIMI Play 6 projector (China ROM). The package (`io.freemytv`), the log tag (`FreeMyTV`) and the signing key are the same as Free My TV's, so it updates over it.
+> Two builds of [Free My TV](https://github.com/simbasjungles/free-my-tv) from one tree: **Beam Home** for the XGIMI Play 6 projector (China ROM) and **Station Home** for the Rokid Station (the box for Rokid's AR glasses). The package (`io.freemytv`), the log tag (`FreeMyTV`) and the signing key are the same as Free My TV's, so either one updates over it.
 
-**A fast, ad-free home screen for the XGIMI Play 6 projector (China ROM).**
+**A fast, ad-free home screen for the XGIMI Play 6 projector (China ROM) and the Rokid Station.**
 
 Trending picks from your own apps, the weather at a glance, and a look that follows the sunset.<br>
 Open source. Built with Claude Code. One button to undo.
@@ -49,13 +49,14 @@ About ten minutes. You need a Google TV or Android TV (Android 9 or newer) and a
    On Linux, get OpenJDK 17, Android's command-line tools and adb from your package manager, then run the same `sdkmanager` line. On Windows, use Git Bash (which Claude Code uses there) or WSL.
 3. **Build:**
    ```bash
-   ./build.sh
+   ./build.sh                  # Beam Home, for the XGIMI: BeamHome.apk
+   DEVICE=rokid ./build.sh     # Station Home, for the Rokid Station: StationHome.apk
    ```
-   The first run creates `config.properties`. Set your city and your [TMDB key](#the-tmdb-key) there, then run it again.
+   The first run creates `config.properties`. Set your city and your [TMDB key](#the-tmdb-key) there, then run it again. `device=rokid` there builds Station Home without `DEVICE=`.
 4. **Install:**
    ```bash
    adb connect 192.168.1.50:5555
-   adb install -r FreeMyTV.apk
+   adb install -r BeamHome.apk     # or StationHome.apk
    ```
    On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts):
    ```bash
@@ -63,12 +64,24 @@ About ten minutes. You need a Google TV or Android TV (Android 9 or newer) and a
    ```
 5. **On the TV**, open *Free My TV* → *Home Screen* → *Free My TV*.
 
+## Two devices, one tree
+
+`device=` picks what `build.sh` makes:
+
+| `device` | App | APK | Made for |
+|---|---|---|---|
+| `xgimi` | Beam Home | `BeamHome.apk` | XGIMI projectors (Play 6, China ROM): Wi-Fi, Bluetooth, Picture and Time Zone screens in English; focus, keystone, speaker and eco mode in the drawer; the Play 6's battery on the home screen |
+| `rokid` | Station Home | `StationHome.apk` | The Rokid Station: a Glasses page (2D/3D, refresh rate, picture, speakers, brightness, zoom) and a 2D/3D button; Wi-Fi, Bluetooth and Power screens; a sleep timer; the battery on the home screen |
+
+Each device's parts run only in its own build and on its own device; on any other TV either build is plain Free My TV. Each one's name, icon, banner, settings mark and backgrounds live in `app/devices/<device>/`, drawn by `python3 tools/make_art.py <device>` and `python3 tools/make_backgrounds.py <device>`.
+
 ## Settings
 
 The first values come from `config.properties`, created by the first build. Most of them can also be changed on the TV, in *Free My TV* → *Home Settings*, and the TV's choice wins:
 
 | Key | What it does | Default |
 |---|---|---|
+| `device` | `xgimi` (Beam Home) or `rokid` (Station Home); `DEVICE=` when you build wins | `xgimi` |
 | `tmdb_key` | Your free TMDB key, for the picks | empty |
 | `tmdb_region` | Your country (two letters): which titles are on which app | `US` |
 | `watchmode_key` | Optional, free [Watchmode](https://api.watchmode.com/) key: a pick opens the title's page in its app | empty |
@@ -109,7 +122,8 @@ To remove it for good, switch to *Original* first, then uninstall *Free My TV* (
   - on Multilaser TVs, Anoki's screen-content recognition (ACR), the store demo and the manual;
   - on KTC-made TVs (NextStar), Anoki's screen-content recognition (ACR), the store demo and the manual;
   - Google Assistant, only with `disable_assistant=true`;
-  - on XGIMI projectors, XGIMI's reporting, ads, factory test and app market apps, only with `disable_telemetry=true`.
+  - on XGIMI projectors, XGIMI's reporting, ads, factory test and app market apps, only with `disable_telemetry=true`;
+  - on the Rokid Station, nothing: its system won't let apps be turned off, so it only takes the home screen.
 - On TCL TVs, the remote's Netflix, YouTube and Prime buttons keep working through a small accessibility service that only reads those buttons. Pick what each one opens in *Free My TV* → *Remote Buttons*; *Original* turns the service off. On Vestel-made TVs (F&U and other store brands) and Xiaomi (Formovie) projectors the same goes for the Netflix button, and on KTC-made TVs (NextStar) for the Tabii button. On Sony TVs, the BRAVIA CORE, Netflix, Disney+, Prime Video, YouTube and Crunchyroll buttons can each open the app you pick, or keep Sony's default.
 - Picture, sound, inputs, remote pairing, Google services and the Play Store are on a protected list, checked before every change.
 - Apps that saved a Wi-Fi network are never turned off, since Android would erase the network. If the TV's first setup saved yours, the switch asks you to forget the network and connect again in Settings first (saved networks out of range don't show there; Claude Code can remove them).
@@ -144,6 +158,9 @@ It's your code, and Claude Code finds its way around it. Try:
 | [`Prefs.java`](app/src/io/freemytv/Prefs.java) | Settings changed on the TV |
 | [`RemoteKeys.java`](app/src/io/freemytv/RemoteKeys.java) | The TCL remote's app buttons |
 | [`Watchdog.java`](app/src/io/freemytv/Watchdog.java) | The safety net |
+| [`Xgimi.java`](app/src/io/freemytv/Xgimi.java) | XGIMI projectors: focus, keystone, speaker, eco, battery, language |
+| [`Rokid.java`](app/src/io/freemytv/Rokid.java) | The Rokid glasses' display service |
+| [`Power.java`](app/src/io/freemytv/Power.java) | The Rokid Station's battery, timeouts and sleep timer |
 
 ## Privacy
 
