@@ -1,7 +1,7 @@
 # Free My TV: notes for Claude
 
 A home screen for Google TV and Android TV that replaces the stock one, plus a settings app that switches between
-Free My TV and the TV's original home screen. A plain Android app in Java, built without Gradle by `build.sh`. **This flavour is called Beam Home** on the device and in all of its UI text (the Java sources, the manifest, the resource strings and the art from `tools/make_art.py`); the package, the log tag and the signing key stay Free My TV's.
+Free My TV and the TV's original home screen. A plain Android app in Java and Kotlin (the Java is being converted), built without Gradle by `build.sh`. **This flavour is called Beam Home** on the device and in all of its UI text (the Java sources, the manifest, the resource strings and the art from `tools/make_art.py`); the package, the log tag and the signing key stay Free My TV's.
 
 The person you're helping may not be technical. Keep it short and friendly, say what you're about to do on their TV
 before you do it, and let them do the taps on the TV.
@@ -9,7 +9,8 @@ before you do it, and let them do the taps on the TV.
 ## Installing it for someone
 
 1. **Ask** for the TV's IP address and their city, if they didn't say.
-2. **Tools:** a JDK 17+, the Android SDK command-line tools (build-tools 34+, platform android-34) and adb. Check
+2. **Tools:** a JDK 17+, Kotlin 2.4.20 (`kotlin-compiler-2.4.20.zip` from JetBrains' GitHub release, its SHA-256
+   checked, unzipped so that `~/.local/share/kotlin/2.4.20/bin/kotlinc` exists, or `KOTLIN_HOME` set), the Android SDK command-line tools (build-tools 34+, platform android-34) and adb. Check
    what's already there (`java -version`, `$ANDROID_HOME`, `adb version`) and install only what's missing.
    - macOS: `brew install --cask temurin android-commandlinetools android-platform-tools`, then
      `sdkmanager "build-tools;34.0.0" "platforms;android-34"`.
@@ -82,7 +83,10 @@ keeps those (their creator, `android.uid.system`, matches no package), but don't
 
 ## The code
 
-- Java 8 language level, minSdk 28 (Android 9), targetSdk 33. No Gradle, no libraries: only the Android SDK.
+- Kotlin (JVM target 1.8) and Java 8 language level, minSdk 28 (Android 9), targetSdk 33. No Gradle; the only library is
+  the Kotlin standard library, shrunk by R8 (`-dontobfuscate -dontoptimize`, the app kept whole). New code is Kotlin.
+  While Java remains, a Kotlin function that Java calls takes nullable parameters (`String?`) wherever Java could pass
+  null, and Java-facing statics are `@JvmStatic` in an `object`.
   Android 9 has no RenderNode (`Recording` wraps it, with a Picture there) and no `cmd role`. On Android 9 to 11
   (`Ui.LEGACY`) the home screen skips the GPU layers, draws blurred shadows from cached bitmaps (`Shadows`) and
   rounds images with a shader instead of clipPath: their GPUs (a Mi Box 3's Mali-450) choked on those.

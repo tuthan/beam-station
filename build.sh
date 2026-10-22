@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Builds FreeMyTV.apk without Gradle: aapt2 -> javac -> d8 -> zipalign -> apksigner.
+# Builds FreeMyTV.apk without Gradle: aapt2 -> kotlinc -> javac -> R8 -> zipalign -> apksigner.
 # Needs a JDK (17+) and the Android SDK command-line tools (build-tools 34+, platform android-34). See README.md.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -18,6 +18,11 @@ AJ="$(ls -d "$SDK"/platforms/android-*/android.jar 2>/dev/null | sort -V | tail 
 [ -f "${AJ:-}" ] || { echo "Android platform not found. Run: sdkmanager \"platforms;android-34\""; exit 1; }
 JAVAC="${JAVA_HOME:+$JAVA_HOME/bin/}javac"
 KEYTOOL="${JAVA_HOME:+$JAVA_HOME/bin/}keytool"
+# Kotlin 2.4.20 from JetBrains' GitHub release (its SHA-256 checked), outside the repo; KOTLIN_HOME points elsewhere.
+KOTLIN_HOME="${KOTLIN_HOME:-$HOME/.local/share/kotlin/2.4.20}"
+KOTLINC="$KOTLIN_HOME/bin/kotlinc"
+KSTDLIB="$KOTLIN_HOME/lib/kotlin-stdlib.jar"
+[ -x "$KOTLINC" ] && [ -f "$KSTDLIB" ] || { echo "Kotlin 2.4.20 not found in $KOTLIN_HOME. Unzip kotlin-compiler-2.4.20.zip there."; exit 1; }
 command -v "$JAVAC" >/dev/null 2>&1 || { echo "JDK not found. Install JDK 17 and set JAVA_HOME."; exit 1; }
 
 # --- Settings: config.properties -> Config.java
@@ -43,7 +48,7 @@ TELEMETRY=false; [ "$(prop disable_telemetry false)" = "true" ] && TELEMETRY=tru
 CRYPTO=false; [ "$(prop show_crypto true)" = "true" ] && CRYPTO=true
 ANIMATION=false; [ "$(prop hide_animation false)" = "true" ] && ANIMATION=true
 
-rm -rf out && mkdir -p out/gen/io/freemytv out/classes
+rm -rf out && mkdir -p out/gen/io/freemytv out/classes out/kclasses
 cat > out/gen/io/freemytv/Config.java <<EOF
 package io.freemytv;
 
@@ -116,9 +121,20 @@ EOF
 esac
 # On Windows javac separates paths with ";", and d8 and apksigner are .bat files.
 CPSEP=:; BAT=; case "$(uname -s 2>/dev/null)" in MINGW*|MSYS*|CYGWIN*) CPSEP=";"; BAT=.bat ;; esac
-"$JAVAC" -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$AJ$CPSEP$BT/core-lambda-stubs.jar" -classpath "$AJ" \
-  -encoding UTF-8 -d out/classes $(find app/src out/gen -name '*.java')
-"$BT/d8$BAT" --release --min-api 28 --lib "$AJ" --output out $(find out/classes -name '*.class')
+# Kotlin first (it reads the Java sources for their declarations), then Java against the Kotlin classes. R8 then
+# keeps the app whole (no renaming, no optimising) and drops the parts of the Kotlin library it doesn't use.
+"$KOTLINC" -no-jdk -no-reflect -jvm-target 1.8 -nowarn -classpath "$AJ" -d out/kclasses \
+  $(find app/src -name '*.kt') $(find app/src out/gen -name '*.java')
+"$JAVAC" -nowarn -Xlint:-options -source 8 -target 8 -bootclasspath "$AJ$CPSEP$BT/core-lambda-stubs.jar" \
+  -classpath "$AJ${CPSEP}out/kclasses$CPSEP$KSTDLIB" -encoding UTF-8 -d out/classes $(find app/src out/gen -name '*.java')
+cat > out/rules.pro <<'EOF'
+-dontobfuscate
+-dontoptimize
+-dontwarn org.jetbrains.annotations.**
+-keep class io.freemytv.** { *; }
+EOF
+"${JAVA_HOME:+$JAVA_HOME/bin/}java" -cp "$BT/lib/d8.jar" com.android.tools.r8.R8 --release --min-api 28 --lib "$AJ" \
+  --pg-conf out/rules.pro --output out $(find out/classes out/kclasses -name '*.class') "$KSTDLIB"
 if command -v zip >/dev/null; then (cd out && zip -qj base.apk classes.dex)
 else "${JAVA_HOME:+$JAVA_HOME/bin/}jar" -u -M -f out/base.apk -C out classes.dex; fi # Git Bash has no zip
 "$BT/zipalign" -f -p 4 out/base.apk out/aligned.apk
