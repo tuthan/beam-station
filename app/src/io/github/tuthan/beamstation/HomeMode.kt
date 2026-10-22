@@ -143,7 +143,7 @@ internal object HomeMode {
                 var home = originalHome(s)
                 if (home.isEmpty() || home.startsWith(PKG + "/")) {
                     val found = currentHome(adb)
-                    home = if (found != null) realHome(found) else if (XGIMI) XGIMI_HOME else ""
+                    home = if (found != null) realHome(found) else if (XGIMI) XGIMI_HOME else otherHome(adb) ?: ""
                 }
                 var dream = originalDream(s)
                 if (dream.isEmpty()) dream = defaultDream(adb)
@@ -393,9 +393,16 @@ internal object HomeMode {
     private fun restoreHome(adb: Adb, recordedHome: String): Boolean {
         var home = recordedHome
         if (home.isEmpty() && adb.shell("pm path " + packageOf(GOOGLE_HOME)).contains("package:")) home = GOOGLE_HOME
+        // Nothing recorded (ours came on while the TV had no default home): the TV's one other home screen. On the
+        // Rokid Station the role fallback below doesn't take ours off.
+        if (home.isEmpty()) home = otherHome(adb) ?: ""
         if (!home.isEmpty()) {
             adb.shell("pm enable " + packageOf(home))
-            if (adb.shell("cmd package set-home-activity '" + home + "'").contains("Success")) return true
+            val out = adb.shell("cmd package set-home-activity '" + home + "'")
+            if (out.contains("Success")) return true
+            AppLog.w("home: set-home-activity " + home + ": " + out.javaTrim())
+        } else {
+            AppLog.w("home: none recorded or found")
         }
         adb.shell("cmd role remove-role-holder --user 0 android.app.role.HOME " + PKG)
         return !homeHolder(adb).contains(PKG)
@@ -638,6 +645,27 @@ internal object HomeMode {
             if (line.startsWith(holder + "/")) return line
         }
         return null
+    }
+
+    /**
+     * The TV's other home screen when it has exactly one (not ours, priority 0 or more: not a fallback like Settings'
+     * FallbackHome), as [realHome]; null when it has none or several. For a TV with no default home (the chooser).
+     */
+    private fun otherHome(adb: Adb): String? {
+        var priority = 0
+        var found: String? = null
+        val list = adb.shell("cmd package query-activities --brief --user 0 -a android.intent.action.MAIN" +
+                " -c android.intent.category.HOME")
+        for (each in list.split("\n")) {
+            val line = each.javaTrim()
+            if (line.startsWith("priority=")) {
+                priority = line.substringAfter("priority=").substringBefore(' ').toIntOrNull() ?: 0
+            } else if (priority >= 0 && COMPONENT.matches(line) && !line.startsWith(PKG + "/")) {
+                if (found != null) return null
+                found = line
+            }
+        }
+        return if (found != null) realHome(found) else null
     }
 
     /**
