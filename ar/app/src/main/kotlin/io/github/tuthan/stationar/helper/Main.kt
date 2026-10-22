@@ -12,6 +12,7 @@ import android.view.MotionEvent
 import io.github.tuthan.stationar.core.helper.Command
 import io.github.tuthan.stationar.core.helper.Frames
 import io.github.tuthan.stationar.core.helper.TaskInfo
+import io.github.tuthan.stationar.keys.KeyFilterSetting
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.IOException
@@ -23,8 +24,8 @@ import java.io.IOException
  *
  * It listens on one abstract local socket (`args[0]`, random per session), never on the network, and serves the first
  * client whose uid is `args[1]` (Station AR's); anyone else is closed. When Station AR goes away (it left AR, or
- * crashed) the helper closes the tasks it put on AR's displays and exits. Started under `nohup`, so that clean-up runs
- * even when the app's ADB connection died with it; with no client within 15 s, it exits.
+ * crashed) the helper closes the tasks it put on AR's displays and exits. Started with hang-ups ignored, so that clean-up
+ * runs even when the app's ADB connection died with it; with no client within 15 s, it exits.
  */
 object Main {
     /** Root tasks this helper launched or moved onto AR's displays: closed when the app goes away. */
@@ -147,6 +148,15 @@ object Main {
             }
         }
         ours.clear()
+        // The key filter's entry, which the app takes out itself unless it was killed; every other entry stays.
+        try {
+            val next = KeyFilterSetting.next(run("settings", "get", "secure", KeyFilterSetting.KEY).trim(), false)
+            if (next != null) {
+                if (next.isEmpty()) run("settings", "delete", "secure", KeyFilterSetting.KEY)
+                else run("settings", "put", "secure", KeyFilterSetting.KEY, next.joinToString(":"))
+            }
+        } catch (_: Exception) {
+        }
     }
 
     private fun run(vararg cmd: String): String {

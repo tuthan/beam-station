@@ -60,6 +60,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     private var tracking = false
     private var focusedIndex = -1
     private var leaving = false
+    private var resumed = false
 
     private val panel = PanelLayout(PanelView.PER_ROW)
     private var panelOpen = false
@@ -147,6 +148,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     override fun onResume() {
         super.onResume()
+        resumed = true
+        main.removeCallbacks(comeBackOrLeave)
         sensors.start()
         glView.onResume()
         val want60 = settings.refresh60
@@ -156,6 +159,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     override fun onPause() {
         super.onPause()
+        resumed = false
         main.removeCallbacks(tick)
         sensors.stop()
         glView.onPause()
@@ -163,9 +167,21 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     override fun onStop() {
         super.onStop()
-        // AR doesn't run in the background: whatever took display 0 (Home, an app) ends it.
-        if (!isChangingConfigurations) leave()
+        if (isChangingConfigurations || leaving) return
+        // AR doesn't run in the background: whatever took display 0 (Home, an app) ends it. Except an app in one of
+        // AR's screens opening something of its own on display 0 (VLC's player): that goes into the app's screen, and
+        // AR comes back.
+        if (apps.count == 0) {
+            leave()
+            return
+        }
+        apps.reclaim { moved ->
+            if (!moved) leave() else if (!resumed) main.postDelayed(comeBackOrLeave, RECLAIM_WAIT_MS)
+        }
     }
+
+    /** After a reclaim: AR should be on top again by now; if it isn't (Home was pressed meanwhile), AR ends. */
+    private val comeBackOrLeave = Runnable { if (!resumed) leave() }
 
     override fun onDestroy() {
         super.onDestroy()
@@ -705,5 +721,6 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         private const val SCREEN_STEP = 10f
         private const val TURN_STEP = 5f
         private const val NUDGE_STEP = 5f
+        private const val RECLAIM_WAIT_MS = 2000L
     }
 }

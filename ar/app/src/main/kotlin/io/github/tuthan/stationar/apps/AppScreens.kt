@@ -10,6 +10,7 @@ import android.view.KeyEvent
 import io.github.tuthan.stationar.AppLog
 import io.github.tuthan.stationar.adb.AdbClient
 import io.github.tuthan.stationar.core.helper.Command
+import io.github.tuthan.stationar.core.helper.TaskInfo
 import io.github.tuthan.stationar.core.keys.KeyFilter
 import io.github.tuthan.stationar.helper.Helper
 import io.github.tuthan.stationar.keys.KeyFilterSetting
@@ -56,6 +57,34 @@ class AppScreens(private val context: Context, private val listener: Listener) :
 
     /** App screens that exist now. */
     val count: Int get() = sources.values.count { it.displayId >= 0 }
+
+    /**
+     * AR was covered while app screens are up. An app in a screen may have opened an activity of its own on the
+     * glasses' display: VLC starts its player from its service, as a new task, and Android puts that on display 0.
+     * Such tasks are moved into their app's screen (worker); `done(moved)` then runs on the main thread.
+     */
+    fun reclaim(done: (Boolean) -> Unit) {
+        val queued = background {
+            var moved = false
+            if (!closed.get() && helper.running) {
+                val screens = sources.values.filter { it.displayId >= 0 }.associateBy { it.name.removePrefix("app:") }
+                val tasks = if (screens.isEmpty()) emptyList() else TaskInfo.decodeAll(helper.call(Command.Tasks) ?: "")
+                for (t in tasks) {
+                    val src = screens[t.pkg] ?: continue
+                    if (t.display != 0) continue
+                    if (helper.call(Command.MoveTask(t.id, src.displayId)) == null) continue
+                    AppLog.i("${src.name}: its task ${t.id} opened on the glasses' display; moved into its screen")
+                    moved = true
+                }
+                if (moved) {
+                    focusedDisplay = -1
+                    focusNow()
+                }
+            }
+            main.post { done(moved) }
+        }
+        if (!queued) done(false)
+    }
 
     // MARK: - Displays (GL thread)
 
@@ -123,9 +152,16 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         val src = if (holding) null else wanted?.let { sources[it] }
         val display = if (src != null && src.task >= 0 && src.displayId >= 0) src.displayId else 0
         if (display == focusedDisplay) return
-        // A corner of the display: the touch is cancelled at once, and corners hold the least.
-        val ok = if (display == 0) helper.call(Command.Focus(0, 1, 1)) != null
-            else helper.call(Command.Focus(display, VirtualDisplaySource.WIDTH - 2, VirtualDisplaySource.HEIGHT - 2)) != null
+        // A corner of the display: the touch is cancelled at once, and corners hold the least. Right after an app starts
+        // its window may not be there to take the touch yet: a few more tries.
+        val focus = if (display == 0) Command.Focus(0, 1, 1)
+            else Command.Focus(display, VirtualDisplaySource.WIDTH - 2, VirtualDisplaySource.HEIGHT - 2)
+        var ok = false
+        for (attempt in 1..FOCUS_TRIES) {
+            ok = helper.call(focus) != null
+            if (ok || closed.get() || !helper.running) break
+            Thread.sleep(FOCUS_RETRY_MS)
+        }
         if (!ok) return
         focusedDisplay = display
         AppLog.i("keys: the remote drives display $display")
@@ -240,6 +276,9 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     }
 
     companion object {
+        private const val FOCUS_TRIES = 6
+        private const val FOCUS_RETRY_MS = 300L
+
         /** A key filter entry left by a crash: taken out at the next start (worker thread; needs the ADB key). */
         fun cleanLeftover(c: Context) {
             if (!KeyFilterSetting.isOn(c)) return

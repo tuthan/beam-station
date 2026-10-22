@@ -39,9 +39,12 @@ class Helper(private val context: Context) {
         val a = AdbClient.connect(context, 60_000, approval)
         a.readForever()
         val ready = CountDownLatch(1)
-        // nohup: when the app dies, its ADB connection goes too, and the helper must outlive that to close the tasks it
-        // put on AR's displays; it exits on its own once the app's socket closes.
-        val stream = a.stream("CLASSPATH=$apk exec nohup app_process /system/bin ${Main::class.java.name} $name ${Process.myUid()}")
+        var started = false
+        var said = ""
+        // Hang-ups ignored (what nohup does, without the nohup.out it can't write in /): when the app dies, its ADB
+        // connection goes too, and the helper must outlive that to close the tasks it put on AR's displays; it exits on
+        // its own once the app's socket closes.
+        val stream = a.stream("trap '' HUP; CLASSPATH=$apk exec app_process /system/bin ${Main::class.java.name} $name ${Process.myUid()}")
         Thread({
             val line = StringBuilder()
             try {
@@ -52,7 +55,13 @@ class Helper(private val context: Context) {
                             line.append(ch)
                             continue
                         }
-                        if (line.toString() == "READY") ready.countDown() else AppLog.i("helper: $line")
+                        if (line.toString() == "READY") {
+                            started = true
+                            ready.countDown()
+                        } else {
+                            said = line.toString()
+                            AppLog.i("helper: $said")
+                        }
                         line.setLength(0)
                     }
                 }
@@ -62,9 +71,9 @@ class Helper(private val context: Context) {
             AppLog.i("helper: ended")
             ready.countDown()
         }, "stationar-helper-out").start()
-        if (!ready.await(10, TimeUnit.SECONDS)) {
+        if (!ready.await(10, TimeUnit.SECONDS) || !started) {
             a.close()
-            throw IOException("the helper didn't start")
+            throw IOException("the helper didn't start" + if (said.isEmpty()) "" else ": $said")
         }
         val s = LocalSocket()
         try {
