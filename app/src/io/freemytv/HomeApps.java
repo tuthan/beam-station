@@ -222,8 +222,8 @@ final class HomeApps {
     }
 
     /**
-     * Shortcuts in the bottom drawer (on XGIMI projectors, also focus, keystone, speaker mode and eco mode; on the Rokid
-     * Station, the sleep timer, and 2D/3D with glasses plugged in). `glasses`: also asks the glasses for their mode
+     * Shortcuts in the bottom drawer (on XGIMI projectors, also focus, keystone, speaker mode and eco mode; on the
+     * Rokid Station, the sleep timer, and 2D/3D with glasses plugged in). `glasses`: also asks the glasses for their mode
      * (slow: background only); without it, the 2D/3D button waits for the next load.
      */
     static List<Item> drawerShortcuts(Context c, boolean glasses) {

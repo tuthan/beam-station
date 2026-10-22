@@ -150,7 +150,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private final List<HomeApps.Item> lightButtons = new ArrayList<>();
     private Paint lTitle, lTab, lTabOn, lCardTitle, lCardMeta, lQuote, lTip, lDate, lClock, lWeather, lClockQuote, lBattery;
     private Shader lightGradient;
-    // Day and night pictures for when there is no photo (assets/backgrounds/, from app/devices/<device>); null when missing.
+    // Day and night pictures for when there is no photo (assets/backgrounds/, from app/devices/<device>); null when
+    // missing.
     private Bitmap skyLight, skyDark;
 
     // Shelf
