@@ -2,6 +2,8 @@ package io.github.tuthan.stationar.sources
 
 import android.graphics.SurfaceTexture
 import android.opengl.Matrix
+import android.os.Handler
+import android.os.HandlerThread
 import android.view.Surface
 import io.github.tuthan.stationar.render.Gl
 
@@ -59,7 +61,9 @@ abstract class SurfaceSource(name: String, private val width: Int, private val h
         texture = Gl.textureExternal()
         val st = SurfaceTexture(texture)
         st.setDefaultBufferSize(width, height)
-        st.setOnFrameAvailableListener { frames++ }
+        // Not on the main thread (the GL thread has no Looper, so that's where it would land): a busy main thread would
+        // freeze every laptop and app screen.
+        st.setOnFrameAvailableListener({ frames++ }, frameHandler)
         surfaceTexture = st
         val s = Surface(st)
         surface = s
@@ -91,5 +95,12 @@ abstract class SurfaceSource(name: String, private val width: Int, private val h
         Gl.deleteTexture(texture)
         texture = 0
         live = false
+    }
+
+    companion object {
+        /** Where every SurfaceTexture hears of new frames. */
+        private val frameHandler: Handler by lazy {
+            Handler(HandlerThread("stationar-frames").apply { start() }.looper)
+        }
     }
 }

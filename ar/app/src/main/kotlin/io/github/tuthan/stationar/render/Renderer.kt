@@ -5,6 +5,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
 import android.graphics.Typeface
+import android.opengl.EGL14
 import android.opengl.GLES20
 import android.opengl.GLSurfaceView
 import android.os.SystemClock
@@ -25,6 +26,9 @@ import javax.microedition.khronos.opengles.GL10
  * HUD. Runs on the GL thread; everything else talks to it through `GLSurfaceView.queueEvent`. [onDrawFrame] allocates
  * nothing.
  *
+ * Queued events also run while AR is paused, when GLSurfaceView has no EGL context current: anything that makes or
+ * fills a texture (attaching a source, the HUD, the panel) waits for the next frame then.
+ *
  * Without glasses (no rotation samples), the view turns with [turn] instead, so AR can be tried on a monitor.
  */
 class Renderer(
@@ -33,8 +37,8 @@ class Renderer(
     private val listener: Listener,
 ) : GLSurfaceView.Renderer {
     interface Listener {
-        /** The focused screen changed (index in the layout, or -1), on the GL thread. */
-        fun onFocus(index: Int)
+        /** The focused screen changed (index in the layout and its source, or -1 and null), on the GL thread. */
+        fun onFocus(index: Int, source: String?)
 
         /** Head tracking came or went, on the GL thread. */
         fun onTracking(tracking: Boolean)
@@ -59,6 +63,8 @@ class Renderer(
     private val slots = ArrayList<Slot>()
     private val specs = ArrayList<ScreenSpec>()
     private val sources = HashMap<String, Source>()
+    /** Sources added while there was no context: attached at the next frame. */
+    private var attachLater = false
     private var frameNumber = 0L
     private var sizeScale = 1f
 
@@ -80,6 +86,9 @@ class Renderer(
     @Volatile private var hudLine = ""
 
     private val panelView = PanelView()
+    /** The panel's picture to draw at the next frame, and the last one drawn (again after a lost context). */
+    private var panelDraw: ((PanelView) -> Unit)? = null
+    private var panelDrawn: ((PanelView) -> Unit)? = null
     private val panelMesh = ScreenMesh()
     private val panelModel = FloatArray(16)
     private var panelOpen = false
@@ -107,9 +116,10 @@ class Renderer(
         // A new GL context: every texture is gone, so sources and pictures are made again.
         for (s in sources.values) s.attach()
         for (slot in slots) slot.placeholder = 0
+        attachLater = false
         hud.release()
         panelView.release()
-        hudLine.let { hud.set(it) }
+        if (panelOpen && panelDraw == null) panelDraw = panelDrawn
         GLES20.glDisable(GLES20.GL_DEPTH_TEST)
         GLES20.glDisable(GLES20.GL_CULL_FACE)
         GLES20.glEnable(GLES20.GL_BLEND)
@@ -128,9 +138,19 @@ class Renderer(
         val start = SystemClock.elapsedRealtimeNanos()
         frameNumber++
         val p = programs ?: return
+        if (attachLater) {
+            attachLater = false
+            for (s in sources.values) if (s.texture == 0) s.attach()
+        }
+        hud.set(hudLine)
+        panelDraw?.let {
+            panelDraw = null
+            panelDrawn = it
+            it(panelView)
+        }
         updatePose(start)
         Mat4.multiply(viewProjection, projection, view)
-        if (focus.update(specs, gazeYaw, gazePitch, start / 1_000_000)) listener.onFocus(focus.focused)
+        if (focus.update(specs, gazeYaw, gazePitch, start / 1_000_000)) reportFocus()
 
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
@@ -225,7 +245,9 @@ class Renderer(
         val wanted = HashMap<String, Source>()
         for (spec in layout.screens) {
             val name = sourceName(spec.source)
-            val s = sources[name] ?: sourceFor(name)?.also { if (programs != null) it.attach() }
+            val s = sources[name] ?: sourceFor(name)?.also {
+                if (programs != null && hasContext()) it.attach() else attachLater = true
+            }
             if (s != null) wanted[name] = s
         }
         for ((name, s) in sources) if (wanted[name] !== s) s.detach()
@@ -242,6 +264,13 @@ class Renderer(
             specs.add(slot.spec)
         }
         focus.reset()
+        // What was focused is gone: until the gaze settles again, nothing is (and the remote is AR's).
+        reportFocus()
+    }
+
+    private fun reportFocus() {
+        val i = focus.focused
+        listener.onFocus(i, specs.getOrNull(i)?.source)
     }
 
     /** The source a screen's name draws from: both halves of a wide stream share one. */
@@ -319,14 +348,14 @@ class Renderer(
     /** Focuses a screen at once (one just opened). */
     fun focusNow(index: Int) {
         focus.set(index)
-        listener.onFocus(index)
+        reportFocus()
     }
 
     val focused: Int get() = focus.focused
 
+    /** The HUD's line, drawn at the next frame. */
     fun setHud(line: String) {
         hudLine = line
-        hud.set(line)
         // Head-locked near the top of the view.
         Mat4.setRotationX(hudModel, HUD_PITCH)
     }
@@ -342,12 +371,16 @@ class Renderer(
             Mat4.setRotationX(tmpB, panelPitch)
             Mat4.multiply(panelModel, tmpA, tmpB)
         }
-        draw(panelView)
+        panelDraw = draw
     }
 
     fun hidePanel() {
         panelOpen = false
+        panelDraw = null
+        panelDrawn = null
     }
+
+    private fun hasContext() = EGL14.eglGetCurrentContext() != EGL14.EGL_NO_CONTEXT
 
     /** Releases every source and texture (the activity is leaving). */
     fun release() {

@@ -6,6 +6,7 @@ import io.github.tuthan.stationar.core.stream.Pairing
 import java.io.BufferedInputStream
 import java.io.IOException
 import java.net.SocketTimeoutException
+import java.util.concurrent.Semaphore
 import java.util.concurrent.atomic.AtomicBoolean
 import javax.net.ssl.SSLServerSocket
 import javax.net.ssl.SSLSocket
@@ -49,6 +50,8 @@ class StreamServer(private val port: Int, private val pairing: Pairing, private 
     private var thread: Thread? = null
     private val pairingBusy = AtomicBoolean(false)
     private val open = HashSet<SSLSocket>()
+    /** Connections that haven't said what they want yet: a few at a time, so a flood can't use up threads and files. */
+    private val unsorted = Semaphore(MAX_UNSORTED)
 
     /** Opens the port and starts accepting (throws if the port is taken). */
     fun start() {
@@ -83,8 +86,18 @@ class StreamServer(private val port: Int, private val pairing: Pairing, private 
             val c = try {
                 s.accept() as SSLSocket
             } catch (e: IOException) {
-                if (server === s) AppLog.w("receiver: accept failed: $e")
-                break
+                if (server !== s) break
+                // Out of files for a moment, say: the port stays open.
+                AppLog.w("receiver: accept failed: $e")
+                Thread.sleep(500)
+                continue
+            }
+            if (!unsorted.tryAcquire()) {
+                try {
+                    c.close()
+                } catch (_: IOException) {
+                }
+                continue
             }
             synchronized(open) { open.add(c) }
             Thread({ serve(c) }, "stationar-conn").start()
@@ -93,13 +106,17 @@ class StreamServer(private val port: Int, private val pairing: Pairing, private 
 
     private fun serve(c: SSLSocket) {
         val peer = c.inetAddress?.hostAddress ?: "?"
+        var sorted = false
         try {
             c.soTimeout = HANDSHAKE_TIMEOUT_MS
             c.tcpNoDelay = true
             c.startHandshake()
             val input = BufferedInputStream(c.inputStream, 64 * 1024)
             val conn = Connection(c, input)
-            when (val req = Handshake.parseRequest(Handshake.readLine(input))) {
+            val req = Handshake.parseRequest(Handshake.readLine(input))
+            sorted = true
+            unsorted.release()
+            when (req) {
                 is Handshake.Request.Pair -> pair(req.name, conn)
                 is Handshake.Request.Hello -> hello(req, peer, conn)
                 is Handshake.Request.OtherVersion -> conn.answer("VERSION ${Handshake.VERSION}")
@@ -112,6 +129,7 @@ class StreamServer(private val port: Int, private val pairing: Pairing, private 
         } catch (e: RuntimeException) {
             AppLog.w("receiver: $peer: $e")
         } finally {
+            if (!sorted) unsorted.release()
             try {
                 c.close()
             } catch (_: IOException) {
@@ -169,6 +187,8 @@ class StreamServer(private val port: Int, private val pairing: Pairing, private 
 
     companion object {
         const val HANDSHAKE_TIMEOUT_MS = 10_000
+        /** Connections at once that haven't sent their first line; more are closed on arrival. */
+        const val MAX_UNSORTED = 4
         const val PIN_TIMEOUT_MS = 120_000
         /** No bytes for this long ends a stream (the sender keeps a constant frame rate). */
         const val STREAM_TIMEOUT_MS = 5_000

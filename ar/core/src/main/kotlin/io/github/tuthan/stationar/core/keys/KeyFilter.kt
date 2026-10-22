@@ -41,6 +41,9 @@ class KeyFilter(private val longMs: Long = 500) {
             MENU -> return if (down && repeat == 0) Result(true, Action.AR_MENU) else CONSUME
             OK, ENTER, BACK -> {
                 if (down) {
+                    // Another of them while one is held back: it goes to the app as it is (down and up), so the held
+                    // one's press isn't lost.
+                    if (held != 0 && held != code) return PASS
                     if (repeat > 0 || held == code) {
                         // A repeat of a key held back (from a device that repeats keys itself).
                         if (held == code && !fired && timeMs - heldAt >= longMs) return fire(code)

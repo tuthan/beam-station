@@ -38,6 +38,7 @@ import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
@@ -181,26 +182,35 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         AppLog.i("AR: leaving")
         glView.queueEvent {
             val last = renderer.currentLayout()
-            work.execute { settings.lastLayout = last }
+            // After onDestroy the worker is gone: saved here then.
+            if (!background { settings.lastLayout = last }) settings.lastLayout = last
             renderer.release()
             apps.close()
         }
-        work.execute {
+        background {
             advertiser.stop()
             server?.stop()
             server = null
         }
-        work.execute { glasses.leave() }
+        background { glasses.leave() }
         if (!isFinishing) finish()
+    }
+
+    /** Runs `r` on the worker; false once it's shut down (AR is closing). */
+    private fun background(r: () -> Unit): Boolean = try {
+        work.execute(r)
+        true
+    } catch (_: RejectedExecutionException) {
+        false
     }
 
     // MARK: - Renderer.Listener (GL thread)
 
-    override fun onFocus(index: Int) {
+    override fun onFocus(index: Int, source: String?) {
         main.post {
             focusedIndex = index
             updateHud()
-            apps.gazeOn(layout.screens.getOrNull(index)?.source)
+            apps.gazeOn(source)
         }
     }
 
@@ -247,7 +257,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     override fun onPairing(name: String, pin: String?) {
         main.post {
-            pairingLine = if (pin == null) null else "Pair \"$name\": PIN $pin  ·  key ${fingerprint.take(8)}"
+            pairingLine = if (pin == null) null else "Pair \"$name\": PIN $pin  ·  key ${Tls.shortKey(fingerprint)}"
             updateHud()
         }
     }
@@ -572,8 +582,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 return@queueEvent
             }
             renderer.setLayout(placed) { name -> sourceFor(name) }
-            renderer.focusNow(placed.indexOf("app:$pkg"))
             main.post { layout = placed }
+            renderer.focusNow(placed.indexOf("app:$pkg"))
             AppLog.i("AR: opened $pkg in a screen")
         }
     }

@@ -23,7 +23,7 @@ line must arrive within 10 s of connecting.
 
 ```
 laptop:  STATIONAR 1 PAIR <name>          name: 1-40 of A-Z a-z 0-9 space . _ -
-Station: PIN                              the glasses show: Pair "<name>": PIN 123456 · key 1A2B3C4D
+Station: PIN                              the glasses show: Pair "<name>": PIN 123456 · key 1A2B 3C4D 5E6F 7A8B
 laptop:  PIN <6 digits>                   within 120 s
 Station: TOKEN <64 hex>                   32 random bytes; the laptop keeps it
      or  DENIED                           wrong PIN (the PIN is spent)
@@ -31,8 +31,10 @@ Station: TOKEN <64 hex>                   32 random bytes; the laptop keeps it
      or  BUSY                             another laptop is pairing
 ```
 
-The connection closes after the answer. The person checks that the key the sender prints (the first 8 hex digits of
-the fingerprint) matches the one in the glasses before typing the PIN; that check is what makes the pin trustworthy.
+The connection closes after the answer. The person checks that the key the sender prints (the first 16 hex digits of
+the fingerprint, 64 bits) matches the one in the glasses before typing the PIN; that check is what makes the PIN
+trustworthy. It is 16 digits because the fingerprint is public (every connection gets the certificate): with 8, someone
+on the LAN could make certificates until one matched the first 32 bits, then relay the pairing.
 
 The Station keeps only `SHA-256(token)` per laptop name (`files/laptops.txt`); pairing a name again replaces its
 token. The laptop keeps the fingerprint, address, port, token and name in `~/.config/station-ar/hosts` (mode 0600).

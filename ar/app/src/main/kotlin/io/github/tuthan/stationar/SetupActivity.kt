@@ -120,7 +120,7 @@ class SetupActivity : Activity() {
     private fun showLaptops() {
         val port = StationAr.settings(this).port
         val key = try {
-            Tls.fingerprint().take(8).uppercase()
+            Tls.shortKey(Tls.fingerprint())
         } catch (e: Exception) {
             AppLog.w("receiver key", e)
             "?"

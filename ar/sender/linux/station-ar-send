@@ -102,7 +102,9 @@ def read_line(s):
 
 
 def short(fp):
-    return fp[:8].upper()
+    """The key as you compare it with the glasses: 16 hex digits (64 bits), in fours."""
+    d = fp[:16].upper()
+    return " ".join(d[i:i + 4] for i in range(0, 16, 4))
 
 
 def laptop_name():
@@ -278,6 +280,8 @@ def stream(args, host, port, entry, fp_pinned, screen, w, h, output=None):
                     "If you reset Station AR, pair again.")
                 stopping.set()
                 return
+            # The Station may first wait for AR's scene and for the old decoder to let go: a few seconds.
+            s.settimeout(15)
             send_line(s, f"STATIONAR {VERSION} HELLO {entry['token']} {screen} {w} {h} {args.fps} {args.codec}")
             reply = read_line(s)
             if reply != "OK":
@@ -357,6 +361,12 @@ def cmd_run(args):
         screens = [("wide", w * 2, h)]
     else:
         screens = [(str(i), w, h) for i in range(args.monitors)]
+    # The Station's limits (docs/protocol.md): it closes a HELLO outside them without an answer.
+    sw, sh = screens[0][1], screens[0][2]
+    if not (64 <= sw <= 4096 and 64 <= sh <= 2160 and 1 <= args.fps <= 120):
+        print(f"{sw}x{sh}@{args.fps} is outside what the Station takes (64-4096 x 64-2160, 1-120 fps)"
+              + (": --wide doubles the width" if args.wide else ""), file=sys.stderr)
+        return 2
 
     headless = Headless()
 
@@ -527,7 +537,7 @@ def cmd_discover(args):
     hosts = load_hosts()
     for name, ip, port, fp in seen:
         paired = "paired" if fp and any(k.startswith(fp) for k in hosts) else "not paired"
-        print(f"{ip}:{port}  {name}  key {fp[:8].upper()}  ({paired})")
+        print(f"{ip}:{port}  {name}  key {short(fp)}  ({paired})")
     return 0
 
 

@@ -40,13 +40,14 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
     }
 
     override fun onSurfaceGone() {
-        // The decoder draws into the Surface: end the stream first, and wait for the decoder to let go.
+        // The decoder draws into the Surface: end the stream first, and give the decoder a moment to let go (this is
+        // the GL thread). A decoder still holding it after that only gets an error when the Surface goes, and ends.
         val t: Thread?
         synchronized(lock) {
             current?.close()
             t = playing
         }
-        if (t != null && t !== Thread.currentThread()) t.join(2000)
+        if (t != null && t !== Thread.currentThread()) t.join(GONE_WAIT_MS)
     }
 
     /** True while a laptop streams to it. */
@@ -76,6 +77,12 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
         var codec: MediaCodec? = null
         var drain: Thread? = null
         try {
+            if (previousThread?.isAlive == true) {
+                // The old decoder hasn't let go: the Station's decoder might not take a second one. The laptop retries.
+                AppLog.w("$name: the previous stream is still ending; refused for now")
+                conn.answer("CLOSED")
+                return
+            }
             val surface = waitForSurface() ?: run {
                 conn.answer("CLOSED")
                 return
@@ -106,7 +113,6 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
             // MediaCodec.CodecException, IllegalStateException: a stream the decoder can't take, or a Surface gone.
             AppLog.w("$name: decoder stopped", e)
         } finally {
-            decoding = null
             drain?.interrupt()
             try {
                 codec?.stop()
@@ -116,9 +122,11 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
             codec?.release()
             conn.close()
             synchronized(lock) {
+                // A connection that replaced this one keeps its own state.
                 if (current === conn) {
                     current = null
                     playing = null
+                    decoding = null
                 }
             }
         }
@@ -205,6 +213,8 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
     }
 
     companion object {
+        private const val GONE_WAIT_MS = 500L
+
         /** The decoder for this stream's format, or null when the Station has none (answer NO_DECODER). */
         fun decoderFor(hello: Handshake.Request.Hello): String? =
             MediaCodecList(MediaCodecList.REGULAR_CODECS).findDecoderForFormat(format(hello))

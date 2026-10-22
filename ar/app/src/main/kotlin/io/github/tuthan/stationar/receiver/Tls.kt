@@ -57,6 +57,12 @@ object Tls {
     /** The SHA-256 of the receiver's certificate, lower-case hex (what the sender pins). */
     fun fingerprint(): String = Pairing.hex(java.security.MessageDigest.getInstance("SHA-256").digest(certificate(keyStore()).encoded))
 
+    /**
+     * The key as a person compares it with the sender's: 16 hex digits (64 bits) in fours. Fewer would let someone on
+     * the LAN grind a certificate that matches (the full fingerprint is public) and sit in the middle of a pairing.
+     */
+    fun shortKey(fingerprint: String): String = fingerprint.take(16).uppercase().chunked(4).joinToString(" ")
+
     /** A TLS 1.3 server socket on `port`, all interfaces. */
     fun serverSocket(port: Int): SSLServerSocket {
         val ks = keyStore()

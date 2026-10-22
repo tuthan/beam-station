@@ -18,6 +18,8 @@ import io.github.tuthan.stationar.sources.VirtualDisplaySource
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Android apps in AR's screens: their virtual displays, the shell helper that starts them there, and the remote,
@@ -41,7 +43,7 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     private val helper = Helper(context)
     private val sources = ConcurrentHashMap<String, VirtualDisplaySource>()
     private val filter = KeyFilter()
-    @Volatile private var closed = false
+    private val closed = AtomicBoolean(false)
     /** The source the gaze settled on (null: not an app), and the display that has the focus now (worker). */
     @Volatile private var wanted: String? = null
     @Volatile private var focusedDisplay = 0
@@ -59,18 +61,18 @@ class AppScreens(private val context: Context, private val listener: Listener) :
 
     override fun onDisplay(source: VirtualDisplaySource, displayId: Int) {
         val pkg = source.name.removePrefix("app:")
-        work.execute {
-            if (closed) return@execute
-            if (!ensureHelper()) return@execute
+        background {
+            if (closed.get()) return@background
+            if (!ensureHelper()) return@background
             val component = launchComponent(pkg)
             if (component == null) {
                 status("${label(pkg)} has no TV screen to open")
-                return@execute
+                return@background
             }
             val reply = helper.call(Command.Launch(displayId, component))
             if (reply == null) {
                 status("${label(pkg)} didn't open in its screen")
-                return@execute
+                return@background
             }
             source.task = reply.trim().toIntOrNull() ?: -1
             AppLog.i("${source.name}: started on display $displayId, task ${source.task}")
@@ -80,10 +82,17 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     }
 
     override fun onDisplayGone(source: VirtualDisplaySource, displayId: Int) {
-        // On the GL thread, blocking: the app's task must close before its display goes, or it lands on the glasses.
-        val t = source.task
-        if (t >= 0 && helper.running) helper.call(Command.RemoveTask(t))
-        if (focusedDisplay == displayId) focusedDisplay = -1
+        // The GL thread mustn't wait for the helper (it may be busy for a while, starting): the worker closes the task,
+        // then the display. Opening the same app again makes a new source, after this one is done.
+        sources.remove(source.name, source)
+        val queued = background {
+            val t = source.task
+            if (t >= 0 && helper.running) helper.call(Command.RemoveTask(t))
+            source.release()
+            if (focusedDisplay == displayId) focusedDisplay = -1
+            focusNow()
+        }
+        if (!queued) source.release()
     }
 
     // MARK: - Focus follows the gaze
@@ -91,18 +100,18 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     /** The gaze settled on screen `name` (null or not an app: AR keeps the remote). */
     fun gazeOn(name: String?) {
         wanted = if (name != null && sources.containsKey(name)) name else null
-        work.execute { focusNow() }
+        background { focusNow() }
     }
 
     /** AR's panel opened (`true`): the remote stays with AR until it closes. */
     fun holdForPanel(hold: Boolean) {
         holding = hold
-        work.execute { focusNow() }
+        background { focusNow() }
     }
 
     /** Worker: moves the focus where it should be now. */
     private fun focusNow() {
-        if (closed || !helper.running) return
+        if (closed.get() || !helper.running) return
         val src = if (holding) null else wanted?.let { sources[it] }
         val display = if (src != null && src.task >= 0 && src.displayId >= 0) src.displayId else 0
         if (display == focusedDisplay) return
@@ -147,6 +156,11 @@ class AppScreens(private val context: Context, private val listener: Listener) :
 
     private val keyHandler = KeyRouter.Handler { e ->
         if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return@Handler false
+        if (filter.live && !helper.running) {
+            // The helper is gone: a short OK or Back couldn't be sent on, so every key goes to the app as it is.
+            AppLog.w("keys: the helper is gone; the remote stays with the app")
+            filter.live = false
+        }
         val injected = e.deviceId == KeyCharacterMap.VIRTUAL_KEYBOARD
         apply(filter.onKey(e.keyCode, e.action == KeyEvent.ACTION_DOWN, e.repeatCount, e.eventTime, injected))
     }
@@ -157,7 +171,7 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         r.action?.let { listener.onKeyAction(it) }
         if (r.resend != 0) {
             val code = r.resend
-            work.execute { helper.call(Command.Key(code)) }
+            background { helper.call(Command.Key(code)) }
         }
         if (r.checkAt != 0L) {
             main.removeCallbacks(timeout)
@@ -181,7 +195,15 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         pkg
     }
 
-    private fun status(text: String?) = main.post { if (!closed) listener.onAppStatus(text) }
+    private fun status(text: String?) = main.post { if (!closed.get()) listener.onAppStatus(text) }
+
+    /** Runs `r` on the worker; false once it's shut down (AR is closing). */
+    private fun background(r: () -> Unit): Boolean = try {
+        work.execute(r)
+        true
+    } catch (_: RejectedExecutionException) {
+        false
+    }
 
     // MARK: - The end
 
@@ -190,12 +212,13 @@ class AppScreens(private val context: Context, private val listener: Listener) :
      * to call twice, and from any thread; the work runs on the worker.
      */
     fun close() {
-        if (closed) return
-        closed = true
+        if (!closed.compareAndSet(false, true)) return
         KeyRouter.handler = null
-        filter.live = false
-        main.removeCallbacks(timeout)
-        work.execute {
+        main.post {
+            filter.live = false
+            main.removeCallbacks(timeout)
+        }
+        background {
             for (s in sources.values) {
                 val t = s.task
                 if (t >= 0 && helper.running) helper.call(Command.RemoveTask(t))

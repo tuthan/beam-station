@@ -21,7 +21,10 @@ class VirtualDisplaySource(
         /** The display is there (GL thread): start the app on it. */
         fun onDisplay(source: VirtualDisplaySource, displayId: Int)
 
-        /** The display is about to be released (GL thread): close the app's task now. Blocking is fine. */
+        /**
+         * The screen went (GL thread, don't block): the display has no Surface any more, and the app runs on, drawing
+         * nowhere. Close its task, then [release] the display (elsewhere; the task first, or it lands on the glasses).
+         */
         fun onDisplayGone(source: VirtualDisplaySource, displayId: Int)
     }
 
@@ -50,9 +53,12 @@ class VirtualDisplaySource(
     }
 
     override fun onSurfaceGone() {
-        val id = displayId
-        if (id >= 0) listener.onDisplayGone(this, id)
-        release()
+        val id: Int
+        synchronized(this) {
+            id = displayId
+            display?.surface = null
+        }
+        if (id >= 0) listener.onDisplayGone(this, id) else release()
     }
 
     /** Releases the display now (leaving AR, from any thread); its app's task must be closed first. */

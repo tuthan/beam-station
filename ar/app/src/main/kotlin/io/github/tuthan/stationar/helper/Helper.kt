@@ -22,11 +22,12 @@ import java.util.concurrent.TimeUnit
  */
 class Helper(private val context: Context) {
     private var adb: AdbClient? = null
-    private var socket: LocalSocket? = null
+    @Volatile private var socket: LocalSocket? = null
     private var input: DataInputStream? = null
     private var out: DataOutputStream? = null
 
-    val running: Boolean @Synchronized get() = socket != null
+    /** Started and not lost. Any thread, without waiting for a call in progress. */
+    val running: Boolean get() = socket != null
 
     /** Starts the helper (once). `approval`: the Station shows "Allow USB debugging?" for the app's key. */
     @Synchronized

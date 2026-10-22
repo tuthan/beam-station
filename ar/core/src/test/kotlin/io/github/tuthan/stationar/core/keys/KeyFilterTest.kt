@@ -99,4 +99,13 @@ class KeyFilterTest {
         assertNull(f.onTimeout(600).action)
         assertFalse(f.onKey(OK, false, 0, 700, false).consume)
     }
+
+    @Test
+    fun backPressedWhileOkIsHeldGoesToTheAppAndOkStillCounts() {
+        val f = KeyFilter().apply { live = true }
+        assertTrue(f.onKey(OK, true, 0, 0, false).consume)
+        assertFalse(f.onKey(BACK, true, 0, 100, false).consume)
+        assertFalse(f.onKey(BACK, false, 0, 150, false).consume)
+        assertEquals(OK, f.onKey(OK, false, 0, 200, false).resend)
+    }
 }
