@@ -2,9 +2,14 @@ package io.freemytv;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.bluetooth.BluetoothAdapter;
+import android.bluetooth.BluetoothDevice;
+import android.bluetooth.BluetoothProfile;
+import android.content.BroadcastReceiver;
 import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.pm.PackageManager;
 import android.content.pm.ResolveInfo;
 import android.graphics.BlurMaskFilter;
@@ -117,9 +122,9 @@ public class SettingsActivity extends Activity {
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
         private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5,
-                WIFI = 6, WIFI_FORGET = 7;
-        /** The main screen's rows (Remote Buttons, then TV Settings, then Wi-Fi), shown in the order of mainRows(). */
-        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6;
+                WIFI = 6, WIFI_FORGET = 7, BT = 8, BT_DEVICE = 9;
+        /** The main screen's rows (Remote Buttons, TV Settings, Wi-Fi, Bluetooth), shown in the order of mainRows(). */
+        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6, BT_ROW = 7;
         private static final String[] WIFI_BARS = {"wifi_1", "wifi_1", "wifi_2", "wifi_3", "wifi_4"};
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
@@ -151,7 +156,14 @@ public class SettingsActivity extends Activity {
         private String wifiLine = "";
         private Wifi.Network wifiPicked;
         private boolean wifiBusy;
-        private final ExecutorService wifiWork = Executors.newSingleThreadExecutor();
+        // Bluetooth (XGIMI projectors): paired devices, the ones the search found, and the device being paired or picked.
+        private List<Bluetooth.Device> btPaired = new ArrayList<>();
+        private final List<Bluetooth.Device> btFound = new ArrayList<>();
+        private Bluetooth.Device btPicked, btPairing;
+        private boolean btSearching, btListening;
+        private String btLine = "";
+        private BluetoothProfile a2dp;
+        private final ExecutorService work = Executors.newSingleThreadExecutor();   // ADB and Bluetooth calls
         private StaticLayout errorLayout;   // the last error, wrapped (rebuilt only when it changes)
         private String errorShown;
         private final Spoken spoken;
@@ -187,6 +199,43 @@ public class SettingsActivity extends Activity {
                 if (!running || screen != WIFI) return;
                 refreshWifi(true);
                 handler.postDelayed(this, 15_000);
+            }
+        };
+
+        /** While the Bluetooth screen is open: what the search finds, pairing, connections. */
+        private final BroadcastReceiver btEvents = new BroadcastReceiver() {
+            @Override public void onReceive(Context c, Intent i) {
+                String action = i.getAction();
+                BluetoothDevice d = i.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE);
+                if (BluetoothDevice.ACTION_FOUND.equals(action)) {
+                    if (d != null && d.getBondState() != BluetoothDevice.BOND_BONDED) {
+                        Bluetooth.Device dev = Bluetooth.of(d, false);
+                        if (dev != null) {
+                            dev.rssi = i.getShortExtra(BluetoothDevice.EXTRA_RSSI, Short.MIN_VALUE);
+                            addFound(dev);
+                        }
+                    }
+                } else if (BluetoothAdapter.ACTION_DISCOVERY_STARTED.equals(action)) {
+                    btSearching = true;
+                } else if (BluetoothAdapter.ACTION_DISCOVERY_FINISHED.equals(action)) {
+                    btSearching = false;
+                } else if (BluetoothDevice.ACTION_BOND_STATE_CHANGED.equals(action)) {
+                    int state = i.getIntExtra(BluetoothDevice.EXTRA_BOND_STATE, BluetoothDevice.ERROR);
+                    if (btPairing != null && d != null && d.getAddress().equals(btPairing.address)) {
+                        if (state == BluetoothDevice.BOND_BONDED) {
+                            btLine = Ui.tr("Pareado com ", "Paired with ") + btPairing.name + ".";
+                            btPairing = null;
+                        } else if (state == BluetoothDevice.BOND_NONE) {
+                            btLine = Ui.tr("Não deu para parear com ", "Couldn't pair with ") + btPairing.name
+                                    + Ui.tr(". Coloque-o no modo de pareamento e tente de novo.", ". Put it in pairing mode and try again.");
+                            btPairing = null;
+                        }
+                    }
+                    refreshBt();
+                } else {
+                    refreshBt();   // connected or disconnected
+                }
+                invalidate();
             }
         };
 
@@ -233,6 +282,7 @@ public class SettingsActivity extends Activity {
                         return Ui.tr("Início, ", "Home Screen, ") + value;
                     }
                     if (mainRow(row) == WIFI_ROW) return Ui.tr("Wi-Fi", "Wi-Fi") + ", " + wifiSummary();
+                    if (mainRow(row) == BT_ROW) return "Bluetooth" + (btSummary().isEmpty() ? "" : ", " + btSummary());
                     String[] names = {Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview"), Ui.tr("Ajustes do Início", "Home Settings"),
                             Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings")};
                     int at = mainRow(row) - 1;
@@ -248,6 +298,18 @@ public class SettingsActivity extends Activity {
                 }
                 case WIFI_FORGET: {
                     String[][] rows = forgetRows();
+                    return row < rows.length ? rows[row][0] + ", " + rows[row][1] : "";
+                }
+                case BT: {
+                    int at = pickScroll + row;
+                    if (at == 0) return Ui.tr("Parear um aparelho novo", "Pair a new device") + (btSearching ? ", " + Ui.tr("Procurando…", "Searching…") : "");
+                    Bluetooth.Device d = btItem(at);
+                    if (d == null) return "";
+                    String value = btValue(d);
+                    return d.name + (value.isEmpty() ? "" : ", " + value);
+                }
+                case BT_DEVICE: {
+                    String[][] rows = btActions();
                     return row < rows.length ? rows[row][0] + ", " + rows[row][1] : "";
                 }
                 case HOME_CHOICE: {
@@ -286,7 +348,7 @@ public class SettingsActivity extends Activity {
             if (screen == MAIN) {
                 top = LIST_TOP + row * (ROW_H + ROW_GAP);
                 height = ROW_H;
-            } else if (screen == HOME_CHOICE || screen == WIFI_FORGET) {
+            } else if (screen == HOME_CHOICE || screen == WIFI_FORGET || screen == BT_DEVICE) {
                 top = LIST_TOP + 20 + row * (CHOICE_H + ROW_GAP);
                 height = CHOICE_H;
             } else {
@@ -305,6 +367,8 @@ public class SettingsActivity extends Activity {
             handler.post(poll);
             if (screen == WIFI) handler.post(wifiScan);
             else if (HomeMode.XGIMI) refreshWifi(false);
+            if (screen == BT || screen == BT_DEVICE) openBt();
+            else if (Bluetooth.available()) refreshBt();
             Choreographer.getInstance().postFrameCallback(this);
             spoken.readAgain();
         }
@@ -313,6 +377,7 @@ public class SettingsActivity extends Activity {
             running = false;
             handler.removeCallbacks(poll);
             handler.removeCallbacks(wifiScan);
+            closeBt();
             Choreographer.getInstance().removeFrameCallback(this);
         }
 
@@ -375,6 +440,7 @@ public class SettingsActivity extends Activity {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
             if (RemoteKeys.supported()) rows.add(REMOTE_ROW);
             if (HomeMode.XGIMI) rows.add(WIFI_ROW);
+            if (Bluetooth.available()) rows.add(BT_ROW);
             rows.add(TV_ROW);
             int[] out = new int[rows.size()];
             for (int i = 0; i < out.length; i++) out[i] = rows.get(i);
@@ -398,6 +464,8 @@ public class SettingsActivity extends Activity {
                 case HOME_CHOICE:
                 case WIFI_FORGET: return 2;
                 case WIFI: return Math.min(PICK_VISIBLE, 1 + wifiCount());
+                case BT: return Math.min(PICK_VISIBLE, 1 + btCount());
+                case BT_DEVICE: return btActions().length;
                 case HOME_SETTINGS: return settingLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
@@ -430,7 +498,8 @@ public class SettingsActivity extends Activity {
             c.drawText(versionName(getContext()), cx, 704 * k, version);
 
             if (screen == MAIN) drawMain(c, seconds); else if (screen == HOME_CHOICE) drawChoice(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c);
-            else if (screen == WIFI) drawWifi(c); else if (screen == WIFI_FORGET) drawForget(c); else drawList(c);
+            else if (screen == WIFI) drawWifi(c); else if (screen == WIFI_FORGET) drawForget(c);
+            else if (screen == BT) drawBt(c); else if (screen == BT_DEVICE) drawBtDevice(c); else drawList(c);
         }
 
         private void drawMain(Canvas c, float seconds) {
@@ -439,8 +508,8 @@ public class SettingsActivity extends Activity {
             String mode = freeActive() ? "Free My TV" : Ui.tr("Original", "Original");
             String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Tela de Descanso", "Screensaver"),
                     Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Prateleira", "Shelf"),
-                    Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi")};
-            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", HomeMode.XGIMI ? wifiSummary() : ""};
+                    Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi"), "Bluetooth"};
+            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", HomeMode.XGIMI ? wifiSummary() : "", btSummary()};
             for (int i = 0; i < rowCount(); i++) {
                 int row = mainRow(i);
                 float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
@@ -684,9 +753,13 @@ public class SettingsActivity extends Activity {
                             } else if (screen == WIFI_FORGET) {
                                 screen = WIFI;
                                 keepWifiFocus(wifiPicked.ssid);
+                            } else if (screen == BT_DEVICE) {
+                                screen = BT;
+                                keepBtFocus(btPicked.address);
                             } else {
+                                if (screen == BT) closeBt();
                                 focus = mainIndex(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3 : screen == REMOTE_KEYS ? REMOTE_ROW
-                                        : screen == WIFI ? WIFI_ROW : 0);
+                                        : screen == WIFI ? WIFI_ROW : screen == BT ? BT_ROW : 0);
                                 screen = MAIN;
                             }
                         }
@@ -876,11 +949,11 @@ public class SettingsActivity extends Activity {
         }
 
         private boolean scrolling() {
-            return screen == PICKER || screen == SHELF_EDIT || screen == WIFI;
+            return screen == PICKER || screen == SHELF_EDIT || screen == WIFI || screen == BT;
         }
 
         private int listSize() {
-            return screen == SHELF_EDIT ? shelfRows.size() : screen == WIFI ? 1 + wifiCount() : pickLabels.size();
+            return screen == SHELF_EDIT ? shelfRows.size() : screen == WIFI ? 1 + wifiCount() : screen == BT ? 1 + btCount() : pickLabels.size();
         }
 
         // MARK: - Wi-Fi (XGIMI projectors)
@@ -932,7 +1005,7 @@ public class SettingsActivity extends Activity {
         /** Reads the Wi-Fi in the background; with `scan`, shows what's known at once, scans, and reads again. */
         private void refreshWifi(boolean scan) {
             Context c = getContext();
-            wifiWork.execute(() -> {
+            work.execute(() -> {
                 try {
                     if (scan) {
                         showWifi(Wifi.read(c));
@@ -979,7 +1052,7 @@ public class SettingsActivity extends Activity {
                 boolean on = !wifi.enabled;
                 Context c = getContext();
                 wifiBusy = true;
-                wifiWork.execute(() -> {
+                work.execute(() -> {
                     try {
                         Wifi.setEnabled(c, on);
                     } catch (IOException e) {
@@ -1041,7 +1114,7 @@ public class SettingsActivity extends Activity {
             wifiBusy = true;
             wifiLine = Ui.tr("Conectando a ", "Connecting to ") + n.ssid + "…";
             invalidate();
-            wifiWork.execute(() -> {
+            work.execute(() -> {
                 String line;
                 try {
                     line = Wifi.connect(c, n, password) ? Ui.tr("Conectado a ", "Connected to ") + n.ssid + "."
@@ -1066,7 +1139,7 @@ public class SettingsActivity extends Activity {
 
         private void forgetWifi(Wifi.Network n) {
             Context c = getContext();
-            wifiWork.execute(() -> {
+            work.execute(() -> {
                 try {
                     Wifi.forget(c, n);
                     handler.post(() -> {
@@ -1132,6 +1205,235 @@ public class SettingsActivity extends Activity {
             c.drawText(TextUtils.ellipsize(wifiPicked.ssid, new TextPaint(heading), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             String[][] rows = forgetRows();
+            for (int i = 0; i < rows.length; i++) {
+                float y = (LIST_TOP + 20 + i * (CHOICE_H + ROW_GAP)) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + CHOICE_H * k);
+                float f = drawRowBackground(c, i);
+                rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
+                rowSub.setColor(blend(0x8CFFFFFF, 0x991C1C1E, f));
+                c.drawText(rows[i][0], rowRect.left + 30 * k, rowRect.top + 44 * k, rowLabel);
+                c.drawText(rows[i][1], rowRect.left + 30 * k, rowRect.top + 80 * k, rowSub);
+            }
+        }
+
+        // MARK: - Bluetooth (XGIMI projectors)
+
+        private int btCount() {
+            return btPaired.size() + btFound.size();
+        }
+
+        /** The device at list position `at`: 0 is "Pair a new device", then the paired ones, then what the search found. */
+        private Bluetooth.Device btItem(int at) {
+            if (at < 1) return null;
+            at--;
+            if (at < btPaired.size()) return btPaired.get(at);
+            at -= btPaired.size();
+            return at < btFound.size() ? btFound.get(at) : null;
+        }
+
+        /** The main row's value: the speaker or headphones in use. */
+        private String btSummary() {
+            for (Bluetooth.Device d : btPaired) if (d.connected && d.audio) return d.name;
+            return "";
+        }
+
+        private String btValue(Bluetooth.Device d) {
+            if (!d.bonded) return d == btPairing ? Ui.tr("Pareando…", "Pairing…") : Ui.tr("Parear", "Pair");
+            if (d.peripheral) return Ui.tr("Controle", "Remote");
+            return d.connected ? Ui.tr("Conectado", "Connected") : "";
+        }
+
+        /** What OK offers on a paired device: connect or disconnect (speakers, headphones), then forget it. */
+        private String[][] btActions() {
+            List<String[]> rows = new ArrayList<>();
+            if (btPicked != null && btPicked.audio) {
+                rows.add(btPicked.connected
+                        ? new String[] {Ui.tr("Desconectar", "Disconnect"), Ui.tr("O som volta para o projetor.", "The sound goes back to the projector.")}
+                        : new String[] {Ui.tr("Conectar", "Connect"), Ui.tr("O som do projetor sai por ele.", "Play the projector's sound on it.")});
+            }
+            rows.add(new String[] {Ui.tr("Esquecer este aparelho", "Forget this device"), Ui.tr("Para usar, pareie de novo.", "Pair it again to use it.")});
+            return rows.toArray(new String[0][]);
+        }
+
+        /** Listens to the search, pairing and connections, and opens the audio profile (to connect speakers). */
+        private void openBt() {
+            // A pairing that ended while the screen was away (its broadcast missed) doesn't block the next one.
+            if (btPairing != null && btPairing.device.getBondState() != BluetoothDevice.BOND_BONDING) btPairing = null;
+            if (!btListening) {
+                IntentFilter f = new IntentFilter(BluetoothDevice.ACTION_FOUND);
+                f.addAction(BluetoothAdapter.ACTION_DISCOVERY_STARTED);
+                f.addAction(BluetoothAdapter.ACTION_DISCOVERY_FINISHED);
+                f.addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED);
+                f.addAction(BluetoothDevice.ACTION_ACL_CONNECTED);
+                f.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED);
+                f.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED");
+                getContext().registerReceiver(btEvents, f);
+                btListening = true;
+                Bluetooth.openAudio(getContext(), new BluetoothProfile.ServiceListener() {
+                    @Override public void onServiceConnected(int profile, BluetoothProfile proxy) {
+                        if (btListening) a2dp = proxy; else Bluetooth.closeAudio(proxy);
+                    }
+
+                    @Override public void onServiceDisconnected(int profile) {
+                        a2dp = null;
+                    }
+                });
+            }
+            refreshBt();
+        }
+
+        private void closeBt() {
+            if (!btListening) return;
+            btListening = false;
+            getContext().unregisterReceiver(btEvents);
+            Bluetooth.stopSearch();
+            btSearching = false;
+            Bluetooth.closeAudio(a2dp);
+            a2dp = null;
+        }
+
+        private void refreshBt() {
+            work.execute(() -> {
+                List<Bluetooth.Device> paired = Bluetooth.paired();
+                handler.post(() -> {
+                    Bluetooth.Device was = screen == BT ? btItem(pickScroll + focus) : null;
+                    btPaired = paired;
+                    for (Bluetooth.Device p : paired) {
+                        for (int i = btFound.size() - 1; i >= 0; i--) if (btFound.get(i).address.equals(p.address)) btFound.remove(i);
+                    }
+                    if (screen == BT) keepBtFocus(was == null ? null : was.address);
+                    invalidate();
+                });
+            });
+        }
+
+        /** A device the search found: kept once (its strongest signal), speakers and headphones first. */
+        private void addFound(Bluetooth.Device dev) {
+            Bluetooth.Device was = screen == BT ? btItem(pickScroll + focus) : null;
+            for (int i = btFound.size() - 1; i >= 0; i--) {
+                Bluetooth.Device old = btFound.get(i);
+                if (!old.address.equals(dev.address)) continue;
+                if (old.rssi > dev.rssi) dev.rssi = old.rssi;
+                btFound.remove(i);
+            }
+            btFound.add(dev);
+            Collections.sort(btFound, (x, y) -> x.audio != y.audio ? (x.audio ? -1 : 1) : y.rssi - x.rssi);
+            if (screen == BT) keepBtFocus(was == null ? null : was.address);
+        }
+
+        /** After the list changes, the focus stays on the same device. */
+        private void keepBtFocus(String address) {
+            int total = 1 + btCount(), visible = Math.min(PICK_VISIBLE, total);
+            int at = Math.min(pickScroll + focus, total - 1);
+            for (int i = 1; address != null && i < total; i++) if (btItem(i).address.equals(address)) at = i;
+            if (at < pickScroll) pickScroll = at;
+            else if (at >= pickScroll + visible) pickScroll = at - visible + 1;
+            pickScroll = Math.max(0, Math.min(pickScroll, total - visible));
+            focus = at - pickScroll;
+        }
+
+        /** OK on the list: search, pair a found device, or open a paired one's choices (never the remote's). */
+        private void activateBt() {
+            int at = pickScroll + focus;
+            if (at == 0) {
+                if (Bluetooth.search()) {
+                    btSearching = true;
+                    btLine = "";
+                } else {
+                    btLine = Ui.tr("Não deu para procurar aparelhos agora.", "Couldn't search for devices right now.");
+                }
+                return;
+            }
+            Bluetooth.Device d = btItem(at);
+            if (d == null) return;
+            if (!d.bonded) {
+                if (btPairing != null) return;
+                if (Bluetooth.pair(d)) {
+                    btPairing = d;
+                    btLine = Ui.tr("Pareando com ", "Pairing with ") + d.name + "…";
+                } else {
+                    btLine = Ui.tr("Não deu para parear com ", "Couldn't pair with ") + d.name
+                            + Ui.tr(". Coloque-o no modo de pareamento e tente de novo.", ". Put it in pairing mode and try again.");
+                }
+            } else if (d.peripheral) {
+                btLine = Ui.tr("O controle fica como está: pareie ou esqueça nos Ajustes da TV.",
+                        "The remote stays as it is: pair or forget it in TV Settings.");
+            } else {
+                btPicked = d;
+                screen = BT_DEVICE;
+                focus = 0;
+            }
+        }
+
+        private void activateBtDevice() {
+            Bluetooth.Device d = btPicked;
+            boolean connectRow = d.audio && focus == 0;
+            screen = BT;
+            keepBtFocus(d.address);
+            if (!connectRow) {
+                btLine = Bluetooth.forget(d) ? Ui.tr("Esqueci ", "Forgot ") + d.name + "."
+                        : Ui.tr("Não deu para esquecer ", "Couldn't forget ") + d.name + ".";
+                refreshBt();
+                return;
+            }
+            boolean on = !d.connected;
+            if (!Bluetooth.connect(a2dp, d, on)) {
+                btLine = Ui.tr("Não deu para conectar a ", "Couldn't connect to ") + d.name + ".";
+                return;
+            }
+            if (!on) return;
+            String connecting = Ui.tr("Conectando a ", "Connecting to ") + d.name + "…";
+            btLine = connecting;
+            // It takes a few seconds; the connection broadcasts refresh the list, and this says how it went.
+            handler.postDelayed(() -> {
+                if (!connecting.equals(btLine)) return;
+                boolean ok = false;
+                for (Bluetooth.Device p : btPaired) ok |= p.address.equals(d.address) && p.connected;
+                btLine = ok ? Ui.tr("Conectado a ", "Connected to ") + d.name + "."
+                        : Ui.tr("Não deu para conectar a ", "Couldn't connect to ") + d.name
+                        + Ui.tr(". Ligue o aparelho e tente de novo.", ". Turn it on and try again.");
+                invalidate();
+            }, 10_000);
+        }
+
+        /** Pair a new device, the paired ones (the remote last), then the ones the search found. */
+        private void drawBt(Canvas c) {
+            Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
+            c.drawText("Bluetooth", LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            int rows = rowCount();
+            for (int i = 0; i < rows; i++) {
+                int at = pickScroll + i;
+                float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
+                float f = drawRowBackground(c, i);
+                Bluetooth.Device d = btItem(at);
+                boolean dim = d != null && d.peripheral;
+                rowLabel.setColor(blend(dim ? 0x80FFFFFF : 0xF2FFFFFF, dim ? 0x801C1C1E : INK, f));
+                rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                float base = rowRect.centerY() + Ui.halfCap(rowLabel), left = rowRect.left + 30 * k, right = rowRect.right - 30 * k;
+                String label = d == null ? Ui.tr("Parear um aparelho novo", "Pair a new device") : d.name;
+                String value = d == null ? (btSearching ? Ui.tr("Procurando…", "Searching…") : "") : btValue(d);
+                if (!value.isEmpty()) {
+                    c.drawText(value, right, base, rowValue);
+                    right -= rowValue.measureText(value) + 24 * k;
+                }
+                c.drawText(TextUtils.ellipsize(label, new TextPaint(rowLabel), right - left, TextUtils.TruncateAt.END).toString(), left, base, rowLabel);
+            }
+            Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
+            float hy = (LIST_TOP + 20 + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            String line = !btLine.isEmpty() ? btLine : btSearching
+                    ? Ui.tr("Coloque o aparelho no modo de pareamento e escolha abaixo.", "Put the device in pairing mode, then pick it below.")
+                    : Ui.tr("OK pareia, conecta ou esquece. O controle fica como está.", "OK pairs, connects or forgets. The remote stays as it is.");
+            c.drawText(TextUtils.ellipsize(line, new TextPaint(hint), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(),
+                    LIST_X * k + 30 * k, hy, hint);
+        }
+
+        /** A paired speaker or headphones: connect or disconnect, or forget it. */
+        private void drawBtDevice(Canvas c) {
+            Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
+            c.drawText(TextUtils.ellipsize(btPicked.name, new TextPaint(heading), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(),
+                    LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            String[][] rows = btActions();
             for (int i = 0; i < rows.length; i++) {
                 float y = (LIST_TOP + 20 + i * (CHOICE_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + CHOICE_H * k);
@@ -1317,6 +1619,12 @@ public class SettingsActivity extends Activity {
                 spoken.focusMoved();
                 return;
             }
+            if (screen == BT || screen == BT_DEVICE) {
+                if (screen == BT) activateBt(); else activateBtDevice();
+                invalidate();
+                spoken.focusMoved();
+                return;
+            }
             if (screen == HOME_CHOICE) {
                 boolean wantFree = focus == 0;
                 boolean already = wantFree ? freeActive() : HomeMode.ORIGINAL.equals(state.optString("mode", HomeMode.ORIGINAL));
@@ -1369,6 +1677,13 @@ public class SettingsActivity extends Activity {
                 focus = 0;
             } else if (mainRow(focus) == WIFI_ROW) {
                 openWifi();
+            } else if (mainRow(focus) == BT_ROW) {
+                screen = BT;
+                focus = 0;
+                pickScroll = 0;
+                btLine = "";
+                btFound.clear();
+                openBt();
             } else {
                 HomeApps.openTvSettings(c);
             }
