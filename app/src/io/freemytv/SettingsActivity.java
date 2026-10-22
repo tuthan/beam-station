@@ -129,8 +129,8 @@ public class SettingsActivity extends Activity {
         private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, PICKER = 3, SHELF_EDIT = 4,
                 WIFI = 5, WIFI_FORGET = 6, BT = 7, BT_DEVICE = 8, PICTURE = 9, GLASSES = 10, POWER = 11;
         /**
-         * The main screen's rows (TV Settings, Wi-Fi, Bluetooth, Picture, Time Zone, Glasses, Power), shown in the order of
-         * mainRows().
+         * The main screen's rows (TV Settings, Wi-Fi, Bluetooth, Picture, Time Zone, Glasses, Power), shown in the
+         * order of mainRows().
          */
         private static final int TV_ROW = 4, WIFI_ROW = 5, BT_ROW = 6, PICTURE_ROW = 7, ZONE_ROW = 8, GLASSES_ROW = 9,
                 POWER_ROW = 10;
@@ -474,8 +474,8 @@ public class SettingsActivity extends Activity {
         }
 
         /**
-         * Picture and Time Zone on XGIMI projectors; Wi-Fi and Bluetooth on XGIMI projectors and the Rokid Station; Glasses
-         * while Rokid glasses are plugged in; Power on the Rokid Station; all before TV Settings.
+         * Picture and Time Zone on XGIMI projectors; Wi-Fi and Bluetooth on XGIMI projectors and the Rokid Station;
+         * Glasses while Rokid glasses are plugged in; Power on the Rokid Station; all before TV Settings.
          */
         private static int[] mainRows(boolean glasses) {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
@@ -796,7 +796,8 @@ public class SettingsActivity extends Activity {
                     if (down && screen == SHELF_EDIT) {
                         moveShelfApp(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
-                    } else if (down && (screen == HOME_SETTINGS || screen == PICTURE || screen == GLASSES || screen == POWER)) {
+                    } else if (down && (screen == HOME_SETTINGS || screen == PICTURE || screen == GLASSES
+                            || screen == POWER)) {
                         adjust(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
                     }
@@ -831,8 +832,9 @@ public class SettingsActivity extends Activity {
                                 keepBtFocus(btPicked.address);
                             } else {
                                 if (screen == BT) closeBt();
-                                focus = mainIndex(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3 : screen == WIFI ? WIFI_ROW
-                                        : screen == BT ? BT_ROW : screen == PICTURE ? PICTURE_ROW : screen == GLASSES ? GLASSES_ROW
+                                focus = mainIndex(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3
+                                        : screen == WIFI ? WIFI_ROW : screen == BT ? BT_ROW
+                                        : screen == PICTURE ? PICTURE_ROW : screen == GLASSES ? GLASSES_ROW
                                         : screen == POWER ? POWER_ROW : 0);
                                 screen = MAIN;
                             }
@@ -898,13 +900,13 @@ public class SettingsActivity extends Activity {
 
         /** The rows of the list screens: Home Settings, Picture, Glasses, Power. */
         private String[] listLabels() {
-            return screen == PICTURE ? pictureLabels() : screen == GLASSES ? glassesLabels() : screen == POWER ? powerLabels()
-                    : settingLabels();
+            return screen == PICTURE ? pictureLabels() : screen == GLASSES ? glassesLabels()
+                    : screen == POWER ? powerLabels() : settingLabels();
         }
 
         private String[] listValues() {
-            return screen == PICTURE ? pictureValues() : screen == GLASSES ? glassesValues() : screen == POWER ? powerValues()
-                    : settingValues();
+            return screen == PICTURE ? pictureValues() : screen == GLASSES ? glassesValues()
+                    : screen == POWER ? powerValues() : settingValues();
         }
 
         /** Changes the focused row's value one step (OK and → go forward, ← goes back). */
@@ -2060,8 +2062,8 @@ public class SettingsActivity extends Activity {
             String[] labels = listLabels();
             String[] values = listValues();
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            c.drawText(pic ? Ui.tr("Imagem", "Picture") : eyes ? Ui.tr("Óculos", "Glasses") : power ? Ui.tr("Energia", "Power")
-                    : Ui.tr("Ajustes do Início", "Home Settings"),
+            c.drawText(pic ? Ui.tr("Imagem", "Picture") : eyes ? Ui.tr("Óculos", "Glasses")
+                    : power ? Ui.tr("Energia", "Power") : Ui.tr("Ajustes do Início", "Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;

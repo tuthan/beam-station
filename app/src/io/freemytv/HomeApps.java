@@ -100,7 +100,7 @@ final class HomeApps {
         {"spotify", "Spotify", "com.spotify.tv.android", "1DB954", "", "1"},
     };
     static final int MAX_SHELF = 8;
-    /** Live TV apps (the antenna's channels open through the standard Android request first): Google's Live Channels. */
+    /** Live TV apps (the antenna's channels open through the standard Android request first): Live Channels. */
     static final String[] LIVE_TV_APPS = {"com.google.android.tv"};
     /** Kept out of "All Apps" (only hidden, still installed). Add the ones your TV shows that you never use. */
     private static final Set<String> HIDDEN = new HashSet<>(java.util.Arrays.asList(

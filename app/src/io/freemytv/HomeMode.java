@@ -94,8 +94,8 @@ final class HomeMode {
     };
 
     /**
-     * Never turned off, not even by mistake (Google services, the store, the remote, keyboard, settings, system UI). Checked
-     * before every disable.
+     * Never turned off, not even by mistake (Google services, the store, the remote, keyboard, settings, system UI).
+     * Checked before every disable.
      */
     private static final Set<String> PROTECTED = new HashSet<>(Arrays.asList(
         "com.google.android.gms", "com.google.android.gsf", "com.android.vending", "com.google.android.apps.mediashell",
@@ -164,7 +164,9 @@ final class HomeMode {
         if (!listed) return;
         adb.shell(others.isEmpty() ? "settings delete secure enabled_accessibility_services"
                 : "settings put secure enabled_accessibility_services '" + String.join(":", others) + "'");
-        if (others.isEmpty() && state(c).optBoolean("accessibilityWasOff")) adb.shell("settings put secure accessibility_enabled 0");
+        if (others.isEmpty() && state(c).optBoolean("accessibilityWasOff")) {
+            adb.shell("settings put secure accessibility_enabled 0");
+        }
         AppLog.w("old remote buttons service taken out");
     }
 
