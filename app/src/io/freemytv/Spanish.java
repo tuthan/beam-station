@@ -16,8 +16,6 @@ final class Spanish {
             case "Pair": return "Vincular";
             case "Remote": return "Control remoto";
             case "Disconnect": return "Desconectar";
-            case "The sound goes back to the projector.": return "El sonido vuelve al proyector.";
-            case "Play the projector's sound on it.": return "El sonido del proyector sale por él.";
             case "The Station disconnects from it now.": return "La Station se desconecta de ella ahora.";
             case "The sound goes back to the glasses.": return "El sonido vuelve a las gafas.";
             case "Play the Station's sound on it.": return "El sonido de la Station sale por él.";
@@ -38,7 +36,6 @@ final class Spanish {
             case "Saved": return "Guardada";
             case "Open": return "Abierta";
             case "Forget this network": return "Olvidar esta red";
-            case "The projector disconnects from it now.": return "El proyector se desconecta ahora.";
             case "It won't join by itself anymore.": return "Ya no se conectará sola.";
             case "Keep it saved": return "Mantenerla guardada";
             case "Couldn't read the Wi-Fi: ": return "No se pudo leer el Wi-Fi: ";

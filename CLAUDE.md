@@ -151,8 +151,8 @@ scene and speaker mode are Rokid's `rokid_display` service (`adb shell dumpsys r
 the binder (the Station's SELinux is permissive) or else the TV's ADB, and the settings' Glasses page and the drawer's
 2D/3D button use it. A new mode or refresh rate retrains HDMI for about 3 s: read back only once the glasses return.
 The Station runs on a battery: `Power` shows it on the home screen and keeps the screensaver and sleep timeouts
-(`settings put` over the TV's ADB) and a sleep timer, since Rokid's Settings has neither. Wi-Fi and Bluetooth use the
-XGIMI screens.
+(`settings put` over the TV's ADB) and a sleep timer, since Rokid's Settings has neither. Wi-Fi and Bluetooth have their own
+screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
 
 LG and Samsung: the web app above. Other TVs that don't run Google TV or Android TV: the way is a Google TV streamer on
 HDMI (Chromecast with Google TV, Google TV Streamer, onn 4K, NVIDIA Shield). Set Free My TV up on the streamer.

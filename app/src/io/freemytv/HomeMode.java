@@ -80,13 +80,10 @@ final class HomeMode {
         "com.mediatek.tv.retaildemo", "com.electronic.manual",                        // store demo, manual
     };
 
-    /** XGIMI projectors, where the Wi-Fi screen was made (their own is Chinese only). */
-    static final boolean XGIMI = "XGIMI".equalsIgnoreCase(Build.BRAND);
-
     /**
      * Rokid Station (the box for Rokid's AR glasses): its ROM refuses `pm disable-user` for every system app, so nothing
      * is turned off; Free My TV only takes the home screen. Rokid's launcher stays on and keeps HOME away from us through
-     * plugging the glasses and a reboot (tested). Its apps share the system UID, as on XGIMI.
+     * plugging the glasses and a reboot (tested). Its apps share the system UID.
      */
     static final boolean ROKID = "Rokid".equalsIgnoreCase(Build.BRAND);
 

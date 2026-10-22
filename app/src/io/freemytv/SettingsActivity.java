@@ -151,12 +151,12 @@ public class SettingsActivity extends Activity {
         private int screen = MAIN, focus;
         private boolean running, okDown, backDown, wasBusy;
         private int[] mainRows = mainRows(false);
-        // Wi-Fi (XGIMI projectors, Rokid Station): what the TV sees, the line under the list, the network picked to forget.
+        // Wi-Fi (Rokid Station): what the TV sees, the line under the list, the network picked to forget.
         private Wifi.Status wifi;
         private String wifiLine = "";
         private Wifi.Network wifiPicked;
         private boolean wifiBusy;
-        // Bluetooth (XGIMI projectors, Rokid Station): paired devices, the ones the search found, and the device being paired or picked.
+        // Bluetooth (Rokid Station): paired devices, the ones the search found, and the device being paired or picked.
         private List<Bluetooth.Device> btPaired = new ArrayList<>();
         private final List<Bluetooth.Device> btFound = new ArrayList<>();
         private Bluetooth.Device btPicked, btPairing;
@@ -451,8 +451,8 @@ public class SettingsActivity extends Activity {
         }
 
         /**
-         * Remote Buttons only where the remote's buttons can be reached; Wi-Fi and Bluetooth on XGIMI projectors and the
-         * Rokid Station; Glasses while Rokid glasses are plugged in; Power on the Rokid Station; all before TV Settings.
+         * Remote Buttons only where the remote's buttons can be reached; Wi-Fi and Bluetooth on the Rokid
+         * Station; Glasses while Rokid glasses are plugged in; Power on the Rokid Station; all before TV Settings.
          */
         private static int[] mainRows(boolean glasses) {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
@@ -1210,7 +1210,7 @@ public class SettingsActivity extends Activity {
             });
         }
 
-        // MARK: - Wi-Fi (XGIMI projectors, Rokid Station)
+        // MARK: - Wi-Fi (Rokid Station)
 
         private int wifiCount() {
             return wifi == null ? 0 : wifi.networks.size();
@@ -1242,8 +1242,8 @@ public class SettingsActivity extends Activity {
         private String[][] forgetRows() {
             boolean inUse = wifiPicked != null && wifiPicked.connected;
             return new String[][] {
-                {Ui.tr("Esquecer esta rede", "Forget this network"), inUse ? HomeMode.ROKID ? Ui.tr("A Station se desconecta dela agora.", "The Station disconnects from it now.")
-                        : Ui.tr("O projetor se desconecta dela agora.", "The projector disconnects from it now.") : Ui.tr("Ela não entra mais sozinha.", "It won't join by itself anymore.")},
+                {Ui.tr("Esquecer esta rede", "Forget this network"), inUse ? Ui.tr("A Station se desconecta dela agora.", "The Station disconnects from it now.")
+                        : Ui.tr("Ela não entra mais sozinha.", "It won't join by itself anymore.")},
                 {Ui.tr("Cancelar", "Cancel"), Ui.tr("Manter salva", "Keep it saved")}};
         }
 
@@ -1470,7 +1470,7 @@ public class SettingsActivity extends Activity {
             }
         }
 
-        // MARK: - Bluetooth (XGIMI projectors, Rokid Station)
+        // MARK: - Bluetooth (Rokid Station)
 
         private int btCount() {
             return btPaired.size() + btFound.size();
@@ -1502,10 +1502,8 @@ public class SettingsActivity extends Activity {
             List<String[]> rows = new ArrayList<>();
             if (btPicked != null && btPicked.audio) {
                 rows.add(btPicked.connected
-                        ? new String[] {Ui.tr("Desconectar", "Disconnect"), (HomeMode.ROKID ? Ui.tr("O som volta para os óculos.", "The sound goes back to the glasses.")
-                                : Ui.tr("O som volta para o projetor.", "The sound goes back to the projector."))}
-                        : new String[] {Ui.tr("Conectar", "Connect"), (HomeMode.ROKID ? Ui.tr("O som da Station sai por ele.", "Play the Station's sound on it.")
-                                : Ui.tr("O som do projetor sai por ele.", "Play the projector's sound on it."))});
+                        ? new String[] {Ui.tr("Desconectar", "Disconnect"), Ui.tr("O som volta para os óculos.", "The sound goes back to the glasses.")}
+                        : new String[] {Ui.tr("Conectar", "Connect"), Ui.tr("O som da Station sai por ele.", "Play the Station's sound on it.")});
             }
             rows.add(new String[] {Ui.tr("Esquecer este aparelho", "Forget this device"), Ui.tr("Para usar, pareie de novo.", "Pair it again to use it.")});
             return rows.toArray(new String[0][]);

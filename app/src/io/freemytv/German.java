@@ -16,8 +16,6 @@ final class German {
             case "Pair": return "Koppeln";
             case "Remote": return "Fernbedienung";
             case "Disconnect": return "Trennen";
-            case "The sound goes back to the projector.": return "Der Ton kommt wieder aus dem Projektor.";
-            case "Play the projector's sound on it.": return "Der Ton des Projektors kommt aus diesem Gerät.";
             case "The Station disconnects from it now.": return "Die Station trennt sich jetzt davon.";
             case "The sound goes back to the glasses.": return "Der Ton geht zurück an die Brille.";
             case "Play the Station's sound on it.": return "Den Ton der Station darüber abspielen.";
@@ -39,7 +37,6 @@ final class German {
             case "Saved": return "Gespeichert";
             case "Open": return "Offen";
             case "Forget this network": return "Dieses Netzwerk vergessen";
-            case "The projector disconnects from it now.": return "Der Projektor trennt sich jetzt davon.";
             case "It won't join by itself anymore.": return "Es verbindet sich nicht mehr von selbst.";
             case "Keep it saved": return "Gespeichert lassen";
             case "Couldn't read the Wi-Fi: ": return "WLAN nicht lesbar: ";

@@ -13,7 +13,7 @@ import java.util.Collections;
 import java.util.List;
 
 /**
- * Bluetooth for XGIMI projectors, whose own Bluetooth screen is Chinese only, and the Rokid Station: the paired devices
+ * Bluetooth for the Rokid Station: the paired devices
  * (connect, disconnect, forget) and pairing new ones (speakers, headphones). The remote is itself a paired Bluetooth device, so peripherals
  * (remotes, keyboards, game controllers) are only listed, and Bluetooth is never turned off here. Connecting, and
  * forgetting, are hidden calls that need only BLUETOOTH_ADMIN on Android 11; discovery needs location there (granted
@@ -33,7 +33,7 @@ final class Bluetooth {
     }
 
     static boolean available() {
-        return (HomeMode.XGIMI || HomeMode.ROKID) && adapter() != null;
+        return HomeMode.ROKID && adapter() != null;
     }
 
     @SuppressWarnings("deprecation")

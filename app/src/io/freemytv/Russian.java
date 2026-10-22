@@ -23,8 +23,6 @@ final class Russian {
             case "Pair": return "Сопрячь";
             case "Remote": return "Пульт";
             case "Disconnect": return "Отключить";
-            case "The sound goes back to the projector.": return "Звук вернётся на проектор.";
-            case "Play the projector's sound on it.": return "Звук проектора пойдёт на него.";
             case "The Station disconnects from it now.": return "Station сейчас отключится от неё.";
             case "The sound goes back to the glasses.": return "Звук вернётся в очки.";
             case "Play the Station's sound on it.": return "Звук Station пойдёт через него.";
@@ -45,7 +43,6 @@ final class Russian {
             case "Saved": return "Сохранена";
             case "Open": return "Открытая";
             case "Forget this network": return "Забыть эту сеть";
-            case "The projector disconnects from it now.": return "Проектор сразу отключится от неё.";
             case "It won't join by itself anymore.": return "Она больше не будет подключаться сама.";
             case "Keep it saved": return "Оставить сохранённой";
             case "Couldn't read the Wi-Fi: ": return "Не удалось прочитать Wi-Fi: ";
