@@ -78,7 +78,6 @@ final class Recs {
         {"max", "max", "com.wbd.stream"},
         {"max", "max", "com.hbo.hbonow"},
         {"apple tv", "appletv", "com.apple.atve.androidtv.appletv"},
-        {"apple tv", "appletv", "com.apple.atve.sony.appletv"},   // Sony's own build
         {"hotstar", "hotstar", "in.startv.hotstar"},   // TMDB: "JioHotstar" (earlier "Disney Plus Hotstar")
         {"okko", "okko", "ru.more.play"},
         {"crunchyroll", "crunchyroll", "com.crunchyroll.crunchyroid"},

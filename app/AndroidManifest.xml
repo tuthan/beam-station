@@ -29,15 +29,12 @@
         <package android:name="com.wbd.stream" />
         <package android:name="com.hbo.hbonow" />
         <package android:name="com.apple.atve.androidtv.appletv" />
-        <package android:name="com.apple.atve.sony.appletv" />
         <package android:name="com.hulu.livingroomplus" />
         <package android:name="com.cbs.ott" />
         <package android:name="com.peacocktv.peacockandroid" />
         <package android:name="com.globo.globotv" />
         <package android:name="com.spotify.tv.android" />
         <package android:name="com.google.android.tv" />
-        <package android:name="com.mediatek.wwtv.tvcenter" />
-        <package android:name="com.sony.dtv.tvx" />
         <package android:name="com.android.newsettings" />
         <package android:name="com.xgimi.systemui" />
         <package android:name="com.xgimi.soundermodeservice" />

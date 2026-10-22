@@ -54,26 +54,11 @@ final class HomeMode {
     static final String GOOGLE_SETUP = "com.google.android.tungsten.setupwraith";
 
     /**
-     * Turned off in our mode, when the TV has them. Google extras first, then TV-maker extras. The TV's own home
-     * screen and screensaver are added at switch time.
+     * Turned off in our mode, when the TV has them: Google's extras. The TV's own home screen and screensaver are added
+     * at switch time. Never on XGIMI projectors or the Rokid Station (see targets).
      */
     static final String[] DEBLOAT = {
         "com.google.android.play.games", "com.google.android.youtube.tvmusic",        // Play Games, YouTube Music
-        // Multilaser (Expressluck / CVTE board)
-        "tv.anoki.acr.anokiacroptin",                                                 // Anoki ACR: watches what's on screen
-        "fusion.android.tv.demo", "com.expressluck.tvhelpmanual",                     // store demo (also Xiaomi projectors), manual
-        // Philco (Homwee/Changhong)
-        "com.homwee.aipont",                                                          // AI PONT: promo channels, app downloads
-        "com.homwee.help",                                                            // user manual
-        // Xiaomi
-        "com.miui.tv.analytics", "com.xiaomi.statistic",                              // telemetry
-        "com.mitv.tvhome.mitvplus", "com.xm.webcontent",                              // Mi TV+ promo channels, promo web content
-        // Skyworth (VEON and other badges; MediaTek)
-        "com.smartdevice.epopplayer", "com.coocaa.demonow.lightining",               // store demos (start on screen on)
-        "com.smartdevice.recommendation",                                             // Coolita promo channels
-        // KTC (NextStar; MediaTek)
-        "tv.anoki.acr.controller",                                                    // Anoki ACR: watches what's on screen
-        "com.mediatek.tv.retaildemo", "com.electronic.manual",                        // store demo, manual
     };
 
     /**
@@ -108,49 +93,15 @@ final class HomeMode {
         "com.xgimi.newappmarket",                                                     // app market: posts the installed apps
     };
 
-    /** Never turned off, not even by mistake (picture, sound, inputs, remote, store). Checked before every disable. */
+    /**
+     * Never turned off, not even by mistake (Google services, the store, the remote, keyboard, settings, system UI). Checked
+     * before every disable.
+     */
     private static final Set<String> PROTECTED = new HashSet<>(Arrays.asList(
         "com.google.android.gms", "com.google.android.gsf", "com.android.vending", "com.google.android.apps.mediashell",
-        "com.google.android.tv.remote.service", "com.google.android.inputmethod.latin", "com.google.android.webview",
-        "com.android.tv.settings", "com.android.systemui", "android", PKG,
-        // Philips (TP Vision) and MediaTek: system, Ambilight, live TV and inputs, setup, factory menu (#11)
-        "org.droidtv", "org.droidtv.ambisvc", "org.droidtv.ui.strings", "org.droidtv.tv.packageinfo", "org.droidtv.icp",
-        "org.droidtv.gel", "org.droidtv.eum", "com.mediatek.tv.service", "com.mediatek.tvinput", "com.mediatek.network",
-        "com.mediatek.wwtv.tvcenter", "com.mediatek.wwtv.setupwizard", "com.mediatek.tv.factory",
-        "mediatek.factorymenu.ui", "com.tpv.xmic.ots.cms.client",
-        // Multilaser (Expressluck / CVTE): remote pairing and keys, live TV, media player, factory menus
-        "com.express.bt.autopair", "com.mediatek.autopair", "com.mediatek.hotkey.dispatcher",
-        "com.mediatek.android.tv.globalkeyoverlay", "com.cltv.fast", "com.mediatek.wwtv.mediaplayer",
-        "com.mediatek.androidbox", "com.expressluck.facmenu", "com.express.at.factory.factorymanager",
-        "com.at.factory.androidtvaidlservice", "com.cvte.tv.at", "com.cvte.tv.fac.aging", "com.express.fac.test",
-        // Philco (Homwee/Changhong, MediaTek): picture tests, overlays, updates, factory menu (pairing is above)
-        "com.mediatek.tv.factorykey", "com.mediatek.testpq", "com.mediatek.overlay.tvcenter",
-        "com.mediatek.overlay.tvsettings", "com.homwee.overlay.tvservice", "com.homwee.synckey", "com.homwee.upgrade",
-        "com.homwee.dmt.upgrade", "com.homwee.factory", "com.homwee.chinstallapk", "com.homwee.chtvmanager",
-        "com.mstar.android.tv.disclaimercustomization",
-        // Xiaomi (MediaTek): system service, remote pairing, live TV, quick settings, child lock, updates, casting
-        "mitv.service", "com.mi.bluetooth", "com.mitv.livetv.ci_mediatek", "com.xiaomi.tvqs.overseas",
-        "com.mitv.tvlock", "com.xiaomi.mitv.updateservice", "com.xiaomi.android.tvsetup.partnercustomizer",
-        "com.mitv.overseaservice", "com.xiaomi.mitv.tvmanager", "com.xiaomi.wfdsinkhelperservice",
-        "com.mitv.milinkservice", "com.xiaomi.mitv.smartshare", "android.autoinstalls.config.xiaomi.amelie",
-        // Skyworth (MediaTek): live TV, remote pairing and keys, setup, service menu, casting, OLED care, boot
-        "com.smartdevice.livetv", "com.smartdevice.livetv.overlay_SANLUX", "com.smartdevice.bleconnectservice",
-        "com.smartdevice.duplebluetooth", "com.smartdevice.myapp", "com.smartdevice.setupwraith",
-        "com.smartdevice.aftersale", "com.smartdevice.factory", "com.smartdevice.dailymanage",
-        "com.smartdevice.dtv.icast", "com.smartdevice.leanbacklauncher.customizer", "com.mediatek.OledFuctionService",
-        "com.mediatek.android.boot.appsplashscreen", "com.mediatek.android.leanbacklauncher.partnercustomizer",
-        // KTC (NextStar; MediaTek): live TV and tuners, setup, settings, updates, casting, remote pairing, factory menus
-        "com.mediatek.tv.oneworld.tvcenter", "com.mediatek.tis", "com.mediatek.tv.agent",
-        "com.mediatek.dtv.tvinput.dvbtuner", "com.mediatek.tv.oneworld.wizardkt", "com.mediatek.tv.settings",
-        "com.mediatek.tv.systemupdater", "com.mediatek.extservice", "com.mediatek.dialservice", "com.mediatek.miracast",
-        "com.mediatek.tv.launcher.partner", "com.google.android.tv.googletvremotepairer", "com.ktc.serialport",
-        "com.ktc.tv.factory", "ktc.factorymenu.ui",
-        // Xiaomi projectors (Fengmi/Formovie, MediaTek): keystone, focus, picture and sound, system service, remote
-        // pairing, settings provider, factory tests, launcher config, Freeview live TV
-        "com.fengmi.projector.imaging", "com.fengmi.platform", "com.fengmi.Autopair", "com.fengmi.fmsettings",
-        "com.fengmi.testsuite", "android.autoinstalls.config.fomovie",
-        "uk.co.freeview.tifbridge",
-        "uk.co.freeview.mdsclient", "uk.co.freeview.fvpconfigauth",
+        "com.google.android.tv.remote.service", "com.google.android.tv.googletvremotepairer",
+        "com.google.android.inputmethod.latin", "com.google.android.webview", "com.android.tv.settings",
+        "com.android.systemui", "android", PKG,
         // Rokid Station (Amlogic): launcher, cursor and quick menu, system config, settings, box and glasses updates,
         // casting, setup, voice, gateway, licence page
         "com.rokid.glass.er.launcher", "com.rokid.glass.er.assistserver", "com.rokid.sysconfig", "com.rokid.erbox.settings",

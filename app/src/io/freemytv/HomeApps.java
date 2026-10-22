@@ -93,7 +93,6 @@ final class HomeApps {
         {"max", "Max", "com.wbd.stream", "6C3BE0", "", "1.32"},
         {"max", "HBO Max", "com.hbo.hbonow", "6C3BE0", "", "1.32"},
         {"appletv", "Apple TV", "com.apple.atve.androidtv.appletv", "B8BCC6", "", "1.1"},
-        {"appletv", "Apple TV", "com.apple.atve.sony.appletv", "B8BCC6", "", "1.1"},   // Sony's own build
         {"hulu", "Hulu", "com.hulu.livingroomplus", "1CE783", "", "1"},
         {"paramount", "Paramount+", "com.cbs.ott", "0064FF", "", "1"},
         {"peacock", "Peacock", "com.peacocktv.peacockandroid", "6E55DC", "", "1"},
@@ -101,18 +100,11 @@ final class HomeApps {
         {"spotify", "Spotify", "com.spotify.tv.android", "1DB954", "", "1"},
     };
     static final int MAX_SHELF = 8;
-    /** Live TV apps of some brands (the antenna's channels open through the standard Android request first). */
-    static final String[] LIVE_TV_APPS = {"com.google.android.tv", "com.mediatek.wwtv.tvcenter", "com.sony.dtv.tvx",
-            "com.smartdevice.livetv", "com.mediatek.tv.oneworld.tvcenter"};
+    /** Live TV apps (the antenna's channels open through the standard Android request first): Google's Live Channels. */
+    static final String[] LIVE_TV_APPS = {"com.google.android.tv"};
     /** Kept out of "All Apps" (only hidden, still installed). Add the ones your TV shows that you never use. */
     private static final Set<String> HIDDEN = new HashSet<>(java.util.Arrays.asList(
             "com.google.android.play.games",        // Google Play Games
-            "com.homwee.factory",                   // Philco: factory menu
-            "com.mstar.android.tv.disclaimercustomization",   // Philco: disclaimer
-            "com.homwee.chtvmanager",               // Philco: TV Manager (cleaner)
-            "com.homwee.multiscreenshare",          // Philco: Midiacast (Chromecast still works)
-            "com.xiaomi.mitv.manualhelp",           // Xiaomi: user manual
-            "com.Smartdevice.emanual",              // Skyworth: user manual
             "com.google.android.videos",            // Google Play Movies (discontinued)
             "com.disney.starplus"));                // Star+ (merged into Disney+)
 
@@ -459,29 +451,16 @@ final class HomeApps {
         }
     }
 
-    /**
-     * Live TV: tune the antenna input directly. MediaTek TV Center otherwise restores the last source used, which can
-     * be HDMI, so its explicit activity receives the tuner URI. Other TV apps keep the standard channel-list request.
-     */
+    /** Live TV: the antenna input's channel list (the standard Android request), else a live TV app. */
     static Intent liveTv(Context c) {
         // Projectors have no tuner (an app's preview channels, VLC's, would count as one).
         if (HomeMode.XGIMI) return null;
         PackageManager pm = c.getPackageManager();
-        // MediaTek OneWorld TV Center (KTC/NextStar) has one input per tuner mode (antenna, cable, satellite): tuning one
-        // switches the TV to that mode and hides the other channel lists, so it opens as it is, on its own last channel.
-        Intent oneWorld = launchIntent(pm, "com.mediatek.tv.oneworld.tvcenter");
-        if (oneWorld != null) return oneWorld;
         String tuner = tunerInput(c);
-        Intent mediaTek = launchIntent(pm, "com.mediatek.wwtv.tvcenter");
-        if (mediaTek != null && tuner != null) {
-            return new Intent(Intent.ACTION_VIEW, TvContract.buildChannelUriForPassthroughInput(tuner))
-                    .setComponent(mediaTek.getComponent());
-        }
         if (tuner != null) {
             Intent channels = new Intent(Intent.ACTION_VIEW, TvContract.buildChannelsUriForInput(tuner));
             if (channels.resolveActivity(pm) != null) return channels;
         }
-        if (mediaTek != null) return mediaTek;
         for (String pkg : LIVE_TV_APPS) {
             Intent app = launchIntent(pm, pkg);
             if (app != null) return app;
