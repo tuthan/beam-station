@@ -89,7 +89,7 @@ The first values come from `config.properties`, created by the first build. Most
 | `city` | The name on the weather card | `Weather` |
 | `hide_animation` | Leave cartoons and anime out of the picks | `false` |
 | `language` | `auto` (follows the TV), `en`, `es`, `pt`, `ru` or `de` | `auto` |
-| `show_crypto` | Show Binance crypto prices on home and screensaver | `true` |
+| `show_crypto` | Show Binance crypto prices on home and screensaver | `false` |
 | `currency` | Crypto prices in `USD`, `EUR`, `BRL`… | `USD` |
 | `temperature` | `C`, `F` or `auto` | `auto` |
 | `disable_assistant` | Also turn off Google Assistant | `false` |
@@ -143,7 +143,7 @@ It's your code, and Claude Code finds its way around it. Try:
 - **It uses the TV's own ADB, from inside the TV.** The app connects to `127.0.0.1:5555` with its own key (that's the *Allow USB debugging?* prompt) and runs the same commands you would: `cmd package set-home-activity`, `settings put secure screensaver_components`, `pm disable-user`. Nothing listens to the network.
 - **Drawn by hand on one Canvas**, with Android 13 shaders for the frosted glass and the sky (plain fills on Android 9 to 12, with lighter shadows and no GPU layers on 9 to 11 for their older GPUs).
 - **A safety net.** A watchdog in a separate process brings back the stock home screen after three crashes in five minutes, and a boot check keeps your choice after TV updates.
-- **Data** from TMDB (trending titles, new releases and which app streams what in your country), Open-Meteo (forecast, sunrise and sunset), and optionally Binance (24-hour prices when `show_crypto=true`).
+- **Data** from TMDB (trending titles, new releases and which app streams what in your country), Open-Meteo (forecast, sunrise and sunset), and optionally Binance (24-hour prices, only while the prices are on: `show_crypto=true` or *Home Settings*).
 
 | File | What it is |
 |---|---|
@@ -164,7 +164,7 @@ It's your code, and Claude Code finds its way around it. Try:
 
 ## Privacy
 
-No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with the coordinates you set, or your time zone's main city), and Binance only when `show_crypto=true`, and Watchmode only when you set a `watchmode_key`. Your settings stay on your computer and your TV.
+No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with the coordinates you set, or your time zone's main city), and Binance only while the prices are on (`show_crypto=true` or *Home Settings*), and Watchmode only when you set a `watchmode_key`. Your settings stay on your computer and your TV.
 
 ## Credits
 
