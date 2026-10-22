@@ -72,8 +72,6 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         // same padding on all four sides) and the tile corners are concentric with it (glass radius = radius + padding).
         const val MARGIN = 80f
         const val CONTENT_R = 1840f
-        // Hero, anchored at the bottom (a two-line title grows upward).
-        const val HERO_TITLE_W = 900f
         // Shelf: tiles with corners concentric with the glass (glass radius = tile radius + padding).
         // Shelf like the tvOS 27 Dock: icons in each brand's color, 48 apart, and the glass bar hugging them with 40 of
         // padding (the focused icon grows 20% without touching its edge). The icons are 16:9, the shape of the apps' TV
@@ -123,7 +121,6 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         const val SHEET = 6
         const val TOAST = 7
         const val Z_STATUS = 0
-        const val Z_HERO = 1
         const val Z_SHELF = 2
         const val Z_DRAWER = 3
         val LOADER: ExecutorService = Executors.newSingleThreadExecutor()
@@ -275,19 +272,10 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
     private var statusFocus = emptyArray<Spring>()
     private var statusRects = emptyArray<RectF>()
     private val capsuleRect = RectF()
-    private var capsuleInfoW = 0f
     private var statusIndex = 0
 
-    // Hero and background
-    private var picks: List<Recs.Pick> = ArrayList()
-    private var pickIndex = 0
-    private var heroSlide = 1
-    private var hero: Hero? = null
-    private var heroFrom: Hero? = null
-    private var heroFadeAt = 0L
+    // Background
     private var bgFadeAt = 0L
-    private val heroFocus = Spring(0.28f, 0.85f, 0f)
-    private val heroButton = RectF()
     private var bgFrom: Backdrop? = null     // null = gradient (no photo)
     private var bgTo: Backdrop? = null
     private val frostMix = IntArray(Backdrop.FW * Backdrop.FH)
@@ -329,8 +317,6 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
     private var drawerWasMoving = false
     private var idle = false
     private var lastNanos = 0L
-    private var resumedAt = 0L
-    private var lastStep = 0L
     private var w = 0
     private var h = 0
     private var k = 1f
@@ -358,9 +344,6 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
     private var okDown = false
     private var backDown = false
 
-    private lateinit var labelPaint: Paint
-    private lateinit var metaPaint: Paint
-    private lateinit var clockPaint: Paint
     private lateinit var buttonPaint: Paint
     private lateinit var capsuleText: Paint
     private lateinit var tipPaint: Paint
@@ -379,7 +362,6 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
     private lateinit var changePaint: Paint
     private lateinit var sheetTitle: Paint
     private lateinit var batteryPaint: Paint
-    private lateinit var titlePaint: TextPaint
     private lateinit var gridLabel: TextPaint
     private lateinit var toastPaint: TextPaint
     private val bitmapPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -431,25 +413,10 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
     private val priceText = arrayOfNulls<String>(HomeData.COINS.size)
     private val changeText = arrayOfNulls<String>(HomeData.COINS.size)
 
-    /** What the hero shows: a recommendation or, without any, the date, the time and the weather. */
-    private class Hero {
-        var label = ""
-        var title = ""
-        var meta = ""
-        var clock = false
-        var button = false
-        var dots = 0
-        var dot = 0
-        var titleLayout: StaticLayout? = null
-
-        fun sameText(o: Hero?): Boolean =
-            o != null && clock == o.clock && label == o.label && title == o.title && meta == o.meta
-    }
-
     /** One layer of the screen. It draws in full-screen coordinates: the glass needs each pixel's real position. */
     private inner class Layer(c: Context, private val kind: Int) : View(c) {
         override fun onDraw(c: Canvas) {
-            if (!this@HomeView::labelPaint.isInitialized) return
+            if (!this@HomeView::lClock.isInitialized) return
             c.translate(-left.toFloat(), -top.toFloat())
             // The layer may be shifted (bottom drawer): the glass reads the background from where it really is. The
             // drawer and the top buttons are always drawn as if resting in place (they are only visible there and are
@@ -545,9 +512,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         if (running) return
         running = true
         checkNight(false)
-        resumedAt = SystemClock.uptimeMillis()
         lastNanos = 0
-        lastStep = 0
         data.addListener(this)
         recs.addListener(this)
         data.refreshIfStale()
@@ -607,10 +572,6 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         } else {
             sheet.snap(0f)
             drawer.snap(0f)
-        }
-        if (pickIndex != 0 && picks.isNotEmpty()) {
-            pickIndex = 0
-            updatePicks()
         }
         if (tab != 0) selectTab(0)
         retarget(!animated)
@@ -713,23 +674,12 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         layoutStatus()
         layoutDrawer()
         layoutLight()
-        hero = null
-        heroFrom = null
         updatePicks()
         motionDirty = true
         wake()
     }
 
     private fun makePaints() {
-        labelPaint = Ui.text(Ui.medium, 25 * k, 0xC7FFFFFF.toInt())
-        labelPaint.letterSpacing = 0.1f
-        titlePaint = TextPaint(Ui.text(Ui.displayMedium, 76 * k, 0xFFFFFFFF.toInt()))
-        titlePaint.letterSpacing = 0.005f
-        metaPaint = Ui.text(Ui.medium, 29 * k, 0xD1FFFFFF.toInt())
-        metaPaint.letterSpacing = 0.014f
-        clockPaint = Ui.numbers(Ui.thin, 176 * k, 0xFFFFFFFF.toInt())
-        clockPaint.letterSpacing = -0.01f
-        for (p in arrayOf(labelPaint, titlePaint, metaPaint, clockPaint)) p.setShadowLayer(22 * k, 0f, 2 * k, 0x59000000)
         lTitle = Ui.text(Ui.displaySemibold, 76 * k, L_INK)
         lTitle.letterSpacing = 0.004f
         lTab = Ui.text(Ui.medium, 30 * k, L_DIM)
@@ -801,17 +751,15 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         var tilesMoving = step(tileFocus, dt)
         if (reorderAnim) tilesMoving = tilesMoving or stepReorder(dt, up)
         val statusMoving = step(statusFocus, dt)
-        var heroMoving = heroFocus.step(dt)
         val topMoving = step(topFocus, dt)
         val cardsMoving = step(cardFocus, dt)
         if (topMoving) status.invalidate()
-        heroMoving = heroMoving or (topMoving or cardsMoving)
+        val heroMoving = topMoving or cardsMoving
         val drawerItemsMoving = step(drawerFocus, dt)
         val gridMoving = step(gridFocus, dt) or scroll.step(dt)
         val drawerMoving = drawer.step(dt)
         val sheetMoving = sheet.step(dt)
         val toastFading = tickToast(up)
-        val heroFading = tickHeroFade(up)
         val bgFading = tickBackgroundFade(up)
         val nightMoving = tickNight(up)
 
@@ -822,7 +770,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         // glass shows the background where it ended up.
         if (tilesMoving || tilesDirty) tiles.invalidate()
         if (statusMoving || statusDirty || bgFading) status.invalidate()
-        if (heroMoving || heroDirty || heroFading) heroLayer.invalidate()
+        if (heroMoving || heroDirty) heroLayer.invalidate()
         if (drawerItemsMoving || drawerDirty || bgFading) drawerLayer.invalidate()
         if (gridMoving || gridDirty) sheetLayer.invalidate()
         if (drawerMoving || bgFading) sky.invalidate()
@@ -837,17 +785,12 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         if (updateClock()) {
             layoutStatus()
             status.invalidate()
-            val hr = hero
-            if (hr != null && hr.clock) {
-                refreshHero(false)
-                heroLayer.invalidate()
-            }
             if (!picksOn()) heroLayer.invalidate()
         }
 
         // Busy: something is moving, or the sheet or the drawer is open.
         val busy = tilesMoving || statusMoving || heroMoving || drawerItemsMoving || gridMoving || drawerMoving
-                || sheetMoving || toastFading || heroFading || bgFading || nightMoving || sheetOpen || sheet.value > 0.001f
+                || sheetMoving || toastFading || bgFading || nightMoving || sheetOpen || sheet.value > 0.001f
                 || drawerOpen || drawer.value > 0.001f || toast != null || !toasts.isEmpty()
         idle = !busy
         if (busy) Choreographer.getInstance().postFrameCallback(this)
@@ -901,7 +844,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
     private fun updateClock(): Boolean {
         val now = System.currentTimeMillis()
         val minute = now / 60_000
-        if (minute == clockMinute || !::clockPaint.isInitialized) return false
+        if (minute == clockMinute || !::lClock.isInitialized) return false
         clockMinute = minute
         clockText = Ui.clock(now)
         dateText = Ui.date(now)
@@ -914,81 +857,17 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         scene.applyPalette()
     }
 
-    // MARK: - Recommendations: hero and background
-
-    private fun currentPick(): Recs.Pick? = if (picks.isEmpty()) null else picks[min(pickIndex, picks.size - 1)]
+    // MARK: - Recommendations and background
 
     /** This hour's picks: the cards and the background image (called when Recs notifies and every 15 s). */
     private fun updatePicks() {
-        if (!::labelPaint.isInitialized) return
+        if (!::lClock.isInitialized) return
         updateCards()
     }
 
     private fun samePicks(a: List<Recs.Pick>, b: List<Recs.Pick>): Boolean {
         if (a.size != b.size) return false
         for (i in a.indices) if (Recs.key(a[i]) != Recs.key(b[i])) return false
-        return true
-    }
-
-    /**
-     * Rebuilds the hero. With `animate`, a different title slides in while the previous one slides out; details that
-     * arrive later (genre, runtime) just appear.
-     */
-    private fun refreshHero(animate: Boolean) {
-        val next = makeHero()
-        val old = hero
-        if (old != null && next.sameText(old) && old.dots == next.dots && old.dot == next.dot && old.button == next.button) {
-            return
-        }
-        val other = old != null && (old.clock != next.clock || old.title != next.title)
-        if (animate && other) {
-            heroFrom = old
-            heroFadeAt = SystemClock.uptimeMillis()
-        }
-        val layoutChanged = old == null || old.clock != next.clock
-        hero = next
-        heroDirty = true
-        if (layoutChanged) layoutStatus()
-    }
-
-    private fun makeHero(): Hero {
-        val h = Hero()
-        val p = currentPick()
-        if (p == null) {
-            h.clock = true
-            h.label = Ui.date(System.currentTimeMillis()).uppercase(Ui.locale())
-            return h
-        }
-        h.label = Recs.periodLabel()
-        h.title = p.title ?: ""
-        h.meta = p.meta ?: ""
-        h.button = p.pkg != null
-        h.dots = picks.size
-        h.dot = pickIndex
-        h.titleLayout = StaticLayout.Builder.obtain(h.title, 0, h.title.length, titlePaint, max(1, Math.round(HERO_TITLE_W * k)))
-            .setMaxLines(2)
-            .setEllipsize(TextUtils.TruncateAt.END)
-            .setLineSpacing(0f, 0.94f)
-            .setIncludePad(false)
-            .build()
-        return h
-    }
-
-    /** ←/→ on the hero: the next (or previous) of this hour's picks. */
-    private fun browse(dir: Int): Boolean {
-        if (picks.size < 2) return false
-        var next = pickIndex
-        for (i in 0 until picks.size) {
-            next = (next + dir + picks.size) % picks.size
-            if (zone != Z_HERO || picks[next].pkg != null) break
-        }
-        if (next == pickIndex) return false
-        pickIndex = next
-        heroSlide = dir
-        refreshHero(true)
-        val b = recs.backdrop(currentPick())
-        if (b != null) showBackdrop(b)
-        spoken.focusMoved()
         return true
     }
 
@@ -1153,15 +1032,6 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         return true
     }
 
-    private fun tickHeroFade(up: Long): Boolean {
-        if (heroFadeAt == 0L) return false
-        if (fadeEase(heroFadeAt, up) >= 1) {
-            heroFadeAt = 0
-            heroFrom = null
-        }
-        return true
-    }
-
     private fun fadeEase(start: Long, up: Long): Float = fadeEase(start, up, FADE_MS.toFloat())
 
     private fun fadeEase(start: Long, up: Long, duration: Float): Float {
@@ -1205,15 +1075,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         c.drawBitmap(image, null, screen, imagePaint)
     }
 
-    // MARK: - Hero
-
-    private fun text(c: Canvas, s: String?, x: Float, y: Float, p: Paint, color: Int, alpha: Float) {
-        if (s == null || s.isEmpty()) return
-        p.color = Ui.alpha(color, alpha)
-        c.drawText(s, x, y, p)
-    }
-
-    // MARK: - Corner capsule: time and weather (when the hero shows a recommendation) and icon-only buttons
+    // MARK: - Corner capsule: icon-only buttons
 
     /** Live TV, the inputs with a device on, All Apps and Settings. */
     private fun statusList(c: Context): List<HomeApps.Item> {
@@ -1247,32 +1109,16 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         layoutStatus()
     }
 
-    private fun showInfo(): Boolean {
-        val hr = hero
-        return hr != null && !hr.clock
-    }
-
     private fun layoutStatus() {
         if (!::capsuleText.isInitialized) return
         val n = statusItems.size
         val b = BUTTON * k
         val gap = 4 * k
         val pad = 6 * k
-        var info = 0f
-        if (showInfo()) {
-            info = 26 * k + capsuleText.measureText(clockText)
-            val wx = data.weather
-            if (!wx.temp.isNaN() && Prefs.weather()) {
-                info += 22 * k + Symbols.width(context, Symbols.weather(wx.code, wx.isDay), 24 * k) + 8 * k +
-                    capsuleText.measureText(HomeData.degrees(wx.temp))
-            }
-            info += 22 * k
-        }
-        capsuleInfoW = info
         val buttons = n * b + max(0, n - 1) * gap
         val right = CONTENT_R * k
         val top = CAPSULE_TOP * k
-        val left = right - pad - buttons - (if (info > 0) info + 12 * k else pad)
+        val left = right - pad - buttons - pad
         capsuleRect.set(left, top, right, top + CAPSULE_H * k)
         var x = right - pad - buttons
         val cy = capsuleRect.centerY()
@@ -1926,15 +1772,12 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
 
     /** Sets the springs' targets from the current focus (snap: no animation). */
     private fun retarget(snap: Boolean) {
-        // Only the group whose focus changed is redrawn (moving along the shelf doesn't redraw the hero or capsule).
+        // Only the group whose focus changed is redrawn (moving along the shelf doesn't redraw the top or the capsule).
         val tilesChanged = aim(tileFocus, if (!sheetOpen && zone == Z_SHELF) shelfIndex else -1, snap)
         var statusChanged = aim(statusFocus, if (!sheetOpen && zone == Z_STATUS) statusIndex else -1, snap)
         val drawerChanged = aim(drawerFocus, if (!sheetOpen && zone == Z_DRAWER) drawerIndex else -1, snap)
-        var heroChanged = heroFocus.target != (if (!sheetOpen && zone == Z_HERO) 1f else 0f)
-        heroFocus.target = if (!sheetOpen && zone == Z_HERO) 1f else 0f
-        if (snap) heroFocus.snap(heroFocus.target)
         val topChanged = aim(topFocus, if (!sheetOpen && zone == Z_TOP) topIndex else -1, snap)
-        heroChanged = heroChanged or (aim(cardFocus, if (!sheetOpen && zone == Z_CARDS) cardIndex else -1, snap) or topChanged)
+        val heroChanged = aim(cardFocus, if (!sheetOpen && zone == Z_CARDS) cardIndex else -1, snap) or topChanged
         statusChanged = statusChanged or topChanged
         tilesDirty = tilesDirty or (snap || tilesChanged)
         statusDirty = statusDirty or (snap || statusChanged)
@@ -2285,10 +2128,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
                     if (next == shelfIndex) return
                     shelfIndex = next
                 } else if (dy < 0) {
-                    val hr = hero
-                    if (hr != null && hr.button) {
-                        zone = Z_HERO
-                    } else if (statusItems.isNotEmpty()) {
+                    if (statusItems.isNotEmpty()) {
                         zone = Z_STATUS
                         statusIndex = if (shelf.isEmpty()) 0 else nearest(statusRects, tileRects[shelfIndex].centerX())
                     } else {
@@ -2299,30 +2139,14 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
                     openDrawer()
                 }
             }
-            Z_HERO -> {
-                if (dx != 0) {
-                    if (!browse(dx)) return
-                } else if (dy < 0) {
-                    if (statusItems.isEmpty()) return
-                    zone = Z_STATUS
-                    statusIndex = 0
-                } else {
-                    zone = Z_SHELF
-                }
-            }
             Z_STATUS -> {
                 if (dx != 0) {
                     val next = max(0, min(statusItems.size - 1, statusIndex + dx))
                     if (next == statusIndex) return
                     statusIndex = next
                 } else if (dy > 0) {
-                    val hr = hero
-                    if (hr != null && hr.button) {
-                        zone = Z_HERO
-                    } else {
-                        zone = Z_SHELF
-                        if (shelf.isNotEmpty()) shelfIndex = nearest(tileRects, statusRects[statusIndex].centerX())
-                    }
+                    zone = Z_SHELF
+                    if (shelf.isNotEmpty()) shelfIndex = nearest(tileRects, statusRects[statusIndex].centerX())
                 } else {
                     return
                 }
@@ -2405,12 +2229,6 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
             if (others.isEmpty()) return
             item = others[gridIndex]
             r = focusedCell
-        } else if (zone == Z_HERO) {
-            val p = currentPick()
-            val pkg = p?.pkg
-            if (p == null || pkg == null) return
-            item = HomeApps.app(pkg, Recs.serviceName(p), p.link)
-            r = heroButton
         } else if (zone == Z_STATUS) {
             if (statusItems.isEmpty()) return
             item = statusItems[statusIndex]
@@ -3259,7 +3077,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
     private fun moveLight(dx: Int, dy: Int): Boolean {
         when (zone) {
             Z_SHELF -> {
-                // Up from an empty shelf too: move()'s older zones (the hero, the corner capsule) aren't drawn any more.
+                // Up from an empty shelf too: move()'s older zone (the corner capsule) isn't drawn any more.
                 if (dy >= 0) return false
                 if (cards.isEmpty()) {
                     zone = Z_TOP
