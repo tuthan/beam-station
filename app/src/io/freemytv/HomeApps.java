@@ -102,16 +102,11 @@ final class HomeApps {
     };
     static final int MAX_SHELF = 8;
     /** Live TV apps of some brands (the antenna's channels open through the standard Android request first). */
-    static final String[] LIVE_TV_APPS = {"com.tcl.tv", "com.google.android.tv", "com.mediatek.wwtv.tvcenter", "com.sony.dtv.tvx",
+    static final String[] LIVE_TV_APPS = {"com.google.android.tv", "com.mediatek.wwtv.tvcenter", "com.sony.dtv.tvx",
             "com.smartdevice.livetv", "com.mediatek.tv.oneworld.tvcenter"};
     /** Kept out of "All Apps" (only hidden, still installed). Add the ones your TV shows that you never use. */
     private static final Set<String> HIDDEN = new HashSet<>(java.util.Arrays.asList(
             "com.google.android.play.games",        // Google Play Games
-            "com.tcl.t_solo",                       // TCL: T-Solo
-            "com.tcl.waterfall.overseas",           // TCL Channel
-            "com.tcl.dashboard",                    // TCL Home
-            "com.tcl.ocean.instructions",           // TCL: User Guide
-            "com.tcl.guard",                        // TCL: Safety Guard
             "com.homwee.factory",                   // Philco: factory menu
             "com.mstar.android.tv.disclaimercustomization",   // Philco: disclaimer
             "com.homwee.chtvmanager",               // Philco: TV Manager (cleaner)
@@ -119,8 +114,7 @@ final class HomeApps {
             "com.xiaomi.mitv.manualhelp",           // Xiaomi: user manual
             "com.Smartdevice.emanual",              // Skyworth: user manual
             "com.google.android.videos",            // Google Play Movies (discontinued)
-            "com.disney.starplus",                  // Star+ (merged into Disney+)
-            "com.tcl.exhibit"));                    // TCL: T-Exhibition
+            "com.disney.starplus"));                // Star+ (merged into Disney+)
 
     private static final Map<String, Bitmap> TILES = new HashMap<>();   // key → ready card
     private static final Map<String, Bitmap> LOGOS = new HashMap<>();   // key → colored logo with no background
@@ -304,7 +298,7 @@ final class HomeApps {
             int number = i + 1;
             Matcher m = digit.matcher(String.valueOf(info.loadLabel(c)));
             if (m.find()) number = Integer.parseInt(m.group(1));
-            // TCL TVs report "connected standby" for every port, with or without a device; only truly "connected"
+            // Some TVs report "connected standby" for every port, with or without a device; only truly "connected"
             // (a device that is on and sending a signal) makes the input show up.
             int state = TvInputManager.INPUT_STATE_DISCONNECTED;
             try {
@@ -497,7 +491,7 @@ final class HomeApps {
 
     /**
      * The TV's antenna (tuner) input, or null. The TV maker's hardware tuner comes first: system apps also declare
-     * tuner inputs (TCL: AirPlay), and Android names the hardware ones "…/HW<id>".
+     * tuner inputs (AirPlay, on some TVs), and Android names the hardware ones "…/HW<id>".
      */
     static String tunerInput(Context c) {
         TvInputManager tim = (TvInputManager) c.getSystemService(Context.TV_INPUT_SERVICE);

@@ -54,17 +54,11 @@ final class HomeMode {
     static final String GOOGLE_SETUP = "com.google.android.tungsten.setupwraith";
 
     /**
-     * Turned off in our mode, when the TV has them. Google extras first, then TV-maker extras (TCL here; add
-     * your brand's, see the README). The TV's own home screen and screensaver are added at switch time.
+     * Turned off in our mode, when the TV has them. Google extras first, then TV-maker extras. The TV's own home
+     * screen and screensaver are added at switch time.
      */
     static final String[] DEBLOAT = {
         "com.google.android.play.games", "com.google.android.youtube.tvmusic",        // Play Games, YouTube Music
-        // TCL
-        "com.tcl.magiconnectfree", "com.tcl.miracast",                                // screen mirroring apps
-        "com.tcl.waterfall.overseas", "com.tcl.channelplus",                          // TCL Channel and its Live TV
-        "com.tcl.messagebox", "com.tcl.usercenter",                                   // TCL messages and account
-        "com.tcl.exhibit", "com.tcl.esticker", "com.tcl.hotelmenu",                   // store demo, hotel menu
-        "com.tcl.repairguide", "com.tcl.ocean.instructions", "com.tcl.logkit",        // repair guide, manual, logs
         // Multilaser (Expressluck / CVTE board)
         "tv.anoki.acr.anokiacroptin",                                                 // Anoki ACR: watches what's on screen
         "fusion.android.tv.demo", "com.expressluck.tvhelpmanual",                     // store demo (also Xiaomi projectors), manual
@@ -116,16 +110,6 @@ final class HomeMode {
 
     /** Never turned off, not even by mistake (picture, sound, inputs, remote, store). Checked before every disable. */
     private static final Set<String> PROTECTED = new HashSet<>(Arrays.asList(
-        "com.tcl.ttvs", "com.tvos", "com.tcl.systemserver", "com.tcl.systemui.plugin", "com.tcl.tv", "com.tcl.tvinput",
-        "com.tcl.hearaid", "com.dolby.android.audio.service", "com.tcl.globalkeyoverlay", "com.tcl.autopair",
-        "com.tcl.UpdatePeripheral", "com.tcl.dashboard", "com.tcl.suspension", "com.tcl.providers.config",
-        "com.tcl.gamebar", "com.tcl.airplay2", "com.mirakulo.astrotv.service", "com.tcl.initsetup",
-        "com.tcl.useragreement", "com.tcl.factory.view", "com.tcl.guard", "com.tcl.t_solo",
-        // TCL on Google TV (C825, Android 11): system server, Bluetooth remote and mic, keys, settings and quick menu,
-        // keyboard, webview, Wi-Fi overlay, partner setup
-        "com.tcl.system.server", "com.tcl.tcl_bt_rcu_service", "com.tcl.micmanager", "com.tcl.keyhelp",
-        "com.tcl.settings", "com.tcl.common.shortcutmenu", "com.tcl.inputmethod.international", "com.tcl.android.webview",
-        "com.tcl.wifi.resources.overlay", "com.tcl.partnercustomizer", "com.tcl.tv.tclhome_passive",
         "com.google.android.gms", "com.google.android.gsf", "com.android.vending", "com.google.android.apps.mediashell",
         "com.google.android.tv.remote.service", "com.google.android.inputmethod.latin", "com.google.android.webview",
         "com.android.tv.settings", "com.android.systemui", "android", PKG,
@@ -590,7 +574,7 @@ final class HomeMode {
     }
 
     /**
-     * Turned off by an older version, protected since (TCL's MagiConnect): back on. After a reinstall only the record
+     * Turned off by an older version, protected since: back on. After a reinstall only the record
      * in the TV's settings knows about it, so both lists count. One that won't come back stays in `disabled`, and so in
      * the record, for Original and the next check.
      */
@@ -728,7 +712,7 @@ final class HomeMode {
     }
 
     /**
-     * Some TVs (TCL, Android 14) leave the HOME role with Google TV's recovery home, while launcherx is the one that
+     * Some Google TVs (Android 14) leave the HOME role with Google TV's recovery home, while launcherx is the one that
      * answers the Home button. Treat that as launcherx, or it stays on and "original" restores the recovery screen.
      */
     private static String realHome(String home) {

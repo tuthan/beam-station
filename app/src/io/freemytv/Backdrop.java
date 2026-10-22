@@ -9,8 +9,8 @@ import android.graphics.Shader;
 
 /**
  * The home screen background made from the recommendation's image, built once in the background:
- *  - the photo cropped to 16:9 at the TV's UI size (1920×1080; 1280×720 on TVs that draw their UI at 720p, like TCL's
- *    1 GB models, where every bitmap here is 2/3 as wide), with the dark scrims already applied (on the left,
+ *  - the photo cropped to 16:9 at the TV's UI size (1920×1080; 1280×720 on TVs that draw their UI at 720p, such as
+ *    some 1 GB models, where every bitmap here is 2/3 as wide), with the dark scrims already applied (on the left,
  *    where the hero text sits; at the bottom, behind the shelf; a faint one at the top, behind the buttons); the left
  *    scrim gets stronger when the photo is bright there;
  *  - the frosted version (192×108, heavily blurred) of the same image: the background of the frosted glass and of the
