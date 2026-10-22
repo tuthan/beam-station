@@ -39,7 +39,7 @@ final class Spanish {
             case "It won't join by itself anymore.": return "Ya no se conectará sola.";
             case "Keep it saved": return "Mantenerla guardada";
             case "Couldn't read the Wi-Fi: ": return "No se pudo leer el Wi-Fi: ";
-            case "This network needs a sign-in Free My TV can't do: use TV Settings.": return "Esta red pide un inicio de sesión que Free My TV no hace: usa los Ajustes del TV.";
+            case "This network needs a sign-in Station Home can't do: use TV Settings.": return "Esta red pide un inicio de sesión que Station Home no hace: usa los Ajustes del TV.";
             case "Wi-Fi password": return "Contraseña del Wi-Fi";
             case "Connect": return "Conectar";
             case "The password has 8 to 63 letters, numbers or symbols.": return "La contraseña tiene de 8 a 63 letras, números o símbolos.";
@@ -140,8 +140,8 @@ final class Spanish {
             case "Switching the home screen and screensaver…": return "Cambiando la pantalla de inicio y el protector de pantalla…";
             case "Android didn't accept the new home screen": return "Android no aceptó la nueva pantalla de inicio";
             case "Turning off apps (": return "Desactivando apps (";
-            case "Measuring Free My TV…": return "Midiendo Free My TV…";
-            case "Couldn't turn on Free My TV: ": return "No se pudo activar Free My TV: ";
+            case "Measuring Station Home…": return "Midiendo Station Home…";
+            case "Couldn't turn on Station Home: ": return "No se pudo activar Station Home: ";
             case "Turning the apps back on…": return "Reactivando las apps…";
             case "Turning apps back on (": return "Reactivando apps (";
             case "Restoring the original home screen…": return "Restaurando la pantalla de inicio original…";
@@ -149,16 +149,16 @@ final class Spanish {
             case "the original home screen": return "la pantalla de inicio original";
             case "Original mode, but I couldn't turn back on: ": return "Modo original, pero no se pudo reactivar: ";
             case "Couldn't go back to the original: ": return "No se pudo volver al modo original: ";
-            case "Free My TV's home screen crashed 3 times in a row; I switched back to the original one.": return "La pantalla de inicio de Free My TV falló 3 veces seguidas; volví a la original.";
+            case "Station Home's home screen crashed 3 times in a row; I switched back to the original one.": return "La pantalla de inicio de Station Home falló 3 veces seguidas; volví a la original.";
             case "the home screen": return "la pantalla de inicio";
             case "the screensaver": return "el protector de pantalla";
-            case "Couldn't check Free My TV: ": return "No se pudo comprobar Free My TV: ";
+            case "Couldn't check Station Home: ": return "No se pudo comprobar Station Home: ";
             case "The TV update turned back on ": return "La actualización del TV reactivó ";
             case "Turned off what was missing: ": return "Desactivé lo que faltaba: ";
-            case "The TV was updated; Free My TV is still on.": return "El TV se actualizó; Free My TV sigue activo.";
+            case "The TV was updated; Station Home is still on.": return "El TV se actualizó; Station Home sigue activo.";
             case "Connecting…": return "Conectando…";
             case "Accept “Allow USB debugging?” on the TV (tick “Always allow”).": return "Acepta “¿Permitir depuración USB?” en el TV (marca “Permitir siempre”).";
-            case "Free My TV's home screen ran into a problem.\nGoing back to the TV's original home screen…": return "La pantalla de inicio de Free My TV tuvo un problema.\nVolviendo a la pantalla original del TV…";
+            case "Station Home's home screen ran into a problem.\nGoing back to the TV's original home screen…": return "La pantalla de inicio de Station Home tuvo un problema.\nVolviendo a la pantalla original del TV…";
             // Home Settings, Shelf and Remote Buttons (#15, #16, #17)
             case "Language": return "Idioma";
             case "Temperature": return "Temperatura";
@@ -209,9 +209,9 @@ final class Spanish {
             case "The other buttons: the TV itself controls them.": return "Los demás botones: el propio TV los controla.";
             case "TCL remote buttons: on this TV they work as always.": return "Botones del control de TCL: en este TV funcionan como siempre.";
             default:
-                if (english.startsWith("Free My TV is on: new home screen and screensaver, ")) {
-                    return "Free My TV está activo: nueva pantalla de inicio y protector, "
-                            + english.substring("Free My TV is on: new home screen and screensaver, ".length()).replace(" apps turned off.", " apps desactivadas.");
+                if (english.startsWith("Station Home is on: new home screen and screensaver, ")) {
+                    return "Station Home está activo: nueva pantalla de inicio y protector, "
+                            + english.substring("Station Home is on: new home screen and screensaver, ".length()).replace(" apps turned off.", " apps desactivadas.");
                 }
                 if (english.startsWith("On · ")) {
                     return "Activas · " + english.substring(5).replace(" titles from the TV's apps, 3 new ones every hour.",

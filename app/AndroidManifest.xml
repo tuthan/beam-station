@@ -6,7 +6,7 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- After the TV boots (and after a TV update), checks that Free My TV mode is still as you left it. -->
+    <!-- After the TV boots (and after a TV update), checks that Station Home mode is still as you left it. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- The Bluetooth screen (Rokid Station, Android 11). Searching needs location there, granted through ADB; the
          location itself is never read. -->
@@ -55,18 +55,18 @@
 
     <application
         android:name=".App"
-        android:label="Free My TV"
+        android:label="Station Home"
         android:icon="@drawable/icon"
         android:banner="@drawable/banner"
         android:allowBackup="false"
         android:usesCleartextTraffic="false">
 
-        <!-- The app's icon opens the settings (switch between Free My TV and the original home screen). -->
+        <!-- The app's icon opens the settings (switch between Station Home and the original home screen). -->
         <activity
             android:name=".SettingsActivity"
             android:process=":home"
             android:exported="true"
-            android:label="Free My TV"
+            android:label="Station Home"
             android:launchMode="singleTask"
             android:taskAffinity="io.freemytv.settings"
             android:excludeFromRecents="true"
@@ -81,12 +81,12 @@
         </activity>
 
         <!-- The home screen. Its own process (:home): if it ever crashes, the safety net in the main process still
-             works. It only becomes the TV's home screen in Free My TV mode (cmd package set-home-activity). -->
+             works. It only becomes the TV's home screen in Station Home mode (cmd package set-home-activity). -->
         <activity
             android:name=".HomeActivity"
             android:process=":home"
             android:exported="true"
-            android:label="Free My TV"
+            android:label="Station Home"
             android:launchMode="singleTask"
             android:taskAffinity=""
             android:stateNotNeeded="true"
@@ -108,7 +108,7 @@
             android:process=":home"
             android:enabled="@bool/dream_in_home"
             android:exported="true"
-            android:label="Free My TV"
+            android:label="Station Home"
             android:permission="android.permission.BIND_DREAM_SERVICE">
             <intent-filter>
                 <action android:name="android.service.dreams.DreamService" />
@@ -121,7 +121,7 @@
             android:name=".ScreensaverAlone"
             android:enabled="@bool/dream_alone"
             android:exported="true"
-            android:label="Free My TV"
+            android:label="Station Home"
             android:permission="android.permission.BIND_DREAM_SERVICE">
             <intent-filter>
                 <action android:name="android.service.dreams.DreamService" />
@@ -142,7 +142,7 @@
             android:process=":keys"
             android:directBootAware="true"
             android:exported="true"
-            android:label="Free My TV"
+            android:label="Station Home"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
             <intent-filter>
                 <action android:name="android.accessibilityservice.AccessibilityService" />

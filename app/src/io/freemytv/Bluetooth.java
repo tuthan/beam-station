@@ -17,7 +17,7 @@ import java.util.List;
  * (connect, disconnect, forget) and pairing new ones (speakers, headphones). The remote is itself a paired Bluetooth device, so peripherals
  * (remotes, keyboards, game controllers) are only listed, and Bluetooth is never turned off here. Connecting, and
  * forgetting, are hidden calls that need only BLUETOOTH_ADMIN on Android 11; discovery needs location there (granted
- * through ADB in Free My TV mode, HomeMode; the location itself is never read).
+ * through ADB in Station Home mode, HomeMode; the location itself is never read).
  */
 final class Bluetooth {
     private Bluetooth() {}

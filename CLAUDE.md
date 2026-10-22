@@ -1,7 +1,7 @@
 # Free My TV: notes for Claude
 
 A home screen for Google TV and Android TV that replaces the stock one, plus a settings app that switches between
-Free My TV and the TV's original home screen. A plain Android app in Java, built without Gradle by `build.sh`.
+Free My TV and the TV's original home screen. A plain Android app in Java, built without Gradle by `build.sh`. **This flavour is called Station Home** on the device and in all of its UI text (the Java sources, the manifest, the resource strings and the art from `tools/make_art.py`); the package, the log tag and the signing key stay Free My TV's.
 LG TVs (webOS) and Samsung TVs (Tizen) get the same home screen as a web app: `web/`, packed by `webos/` and `tizen/`
 (see below).
 The website (freemytv.io) is in `docs/`: static HTML, CSS and JS, no build step. A push to `main` that changes it
