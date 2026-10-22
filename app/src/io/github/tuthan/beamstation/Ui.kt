@@ -1,6 +1,9 @@
 package io.github.tuthan.beamstation
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.content.res.AssetManager
 import android.graphics.Canvas
 import android.graphics.Paint
@@ -145,6 +148,14 @@ internal object Ui {
 
     @JvmStatic
     fun clamp(v: Float) = max(0f, min(1f, v))
+
+    /**
+     * Registers a receiver for the system's broadcasts only. Android 13+ takes the flag; a targetSdk of 34 requires it.
+     * Returns the sticky intent, as registerReceiver does.
+     */
+    @JvmStatic
+    fun register(c: Context, r: BroadcastReceiver, f: IntentFilter): Intent? =
+        if (Build.VERSION.SDK_INT >= 33) c.registerReceiver(r, f, Context.RECEIVER_NOT_EXPORTED) else c.registerReceiver(r, f)
 
     @JvmStatic
     fun tr(pt: String, english: String): String =

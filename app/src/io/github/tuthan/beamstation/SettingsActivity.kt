@@ -1847,7 +1847,7 @@ class SettingsActivity : Activity() {
                 f.addAction(BluetoothDevice.ACTION_ACL_CONNECTED)
                 f.addAction(BluetoothDevice.ACTION_ACL_DISCONNECTED)
                 f.addAction("android.bluetooth.a2dp.profile.action.CONNECTION_STATE_CHANGED")
-                context.registerReceiver(btEvents, f)
+                Ui.register(context, btEvents, f)
                 btListening = true
                 Bluetooth.openAudio(context, object : BluetoothProfile.ServiceListener {
                     override fun onServiceConnected(profile: Int, proxy: BluetoothProfile?) {

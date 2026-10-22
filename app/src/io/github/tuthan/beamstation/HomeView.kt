@@ -554,7 +554,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         recs.refreshIfStale()
         tvInputs?.registerCallback(inputCallback, handler)
         if (Power.available()) {
-            battery = Power.battery(context.registerReceiver(batteryEvents, IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
+            battery = Power.battery(Ui.register(context, batteryEvents, IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
         }
         handler.postDelayed(tick, 15_000)
         checkNotices()
