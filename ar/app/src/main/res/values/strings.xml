@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Station AR</string>
+    <string name="key_filter_description">Station AR sees the remote\'s Menu, held OK and held Back while AR is open, so they still work when an app inside AR has the remote. It passes every other key on, and does nothing outside AR.</string>
+</resources>
