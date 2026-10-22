@@ -238,6 +238,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     }
 
     override fun onKeyAction(action: KeyFilter.Action) {
+        AppLog.i("keys: ${action.name.lowercase()}, kept from the app")
         when (action) {
             KeyFilter.Action.AR_MENU -> togglePanel()
             KeyFilter.Action.RECENTRE -> recentre()
@@ -428,12 +429,14 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     /** The panel is up: it has the remote (AR's display keeps the focus) until it closes. */
     private fun showPanelNow() {
+        if (!panelOpen) AppLog.i("AR: panel open")
         panelOpen = true
         apps.holdForPanel(true)
         drawPanel()
     }
 
     private fun closePanel() {
+        if (panelOpen) AppLog.i("AR: panel closed")
         panelOpen = false
         calibrating = false
         menuScreen = -1
