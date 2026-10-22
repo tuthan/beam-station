@@ -51,6 +51,8 @@ final class Spanish {
             case "Searching for networks…": return "Buscando redes…";
             case "Wi-Fi is off.": return "El Wi-Fi está apagado.";
             case "OK connects. Saved networks join by themselves.": return "OK conecta. Las redes guardadas se conectan solas.";
+            case "Picture": return "Imagen";
+            case "Movie": return "Cine";
             case "HDMI Inputs": return "Entradas HDMI";
             case "Inputs": return "Entradas";
             case "Shortcuts": return "Accesos directos";

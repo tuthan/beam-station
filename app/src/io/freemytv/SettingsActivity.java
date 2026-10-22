@@ -320,8 +320,7 @@ public class SettingsActivity extends Activity {
                 }
                 case HOME_SETTINGS:
                 case REMOTE_KEYS: {
-                    boolean keys = screen == REMOTE_KEYS;
-                    String[] labels = keys ? keyLabels() : settingLabels(), values = keys ? keyValues() : settingValues();
+                    String[] labels = listLabels(), values = listValues();
                     return row < labels.length ? labels[row] + ", " + values[row] : "";
                 }
                 case PICKER: {
@@ -346,7 +345,7 @@ public class SettingsActivity extends Activity {
         private RectF rowBox(int row) {
             float top, height;
             if (screen == MAIN) {
-                top = LIST_TOP + row * (ROW_H + ROW_GAP);
+                top = mainTop() + row * (ROW_H + ROW_GAP);
                 height = ROW_H;
             } else if (screen == HOME_CHOICE || screen == WIFI_FORGET || screen == BT_DEVICE) {
                 top = LIST_TOP + 20 + row * (CHOICE_H + ROW_GAP);
@@ -435,7 +434,7 @@ public class SettingsActivity extends Activity {
             return HomeMode.FREE.equals(state.optString("mode")) && !state.optBoolean("homeReverted");
         }
 
-        /** Remote Buttons only where the remote's buttons can be reached; Wi-Fi on XGIMI projectors, before TV Settings. */
+        /** Remote Buttons only where the remote's buttons can be reached; Wi-Fi and Bluetooth on XGIMI projectors, before TV Settings. */
         private static int[] mainRows() {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
             if (RemoteKeys.supported()) rows.add(REMOTE_ROW);
@@ -445,6 +444,11 @@ public class SettingsActivity extends Activity {
             int[] out = new int[rows.size()];
             for (int i = 0; i < out.length; i++) out[i] = rows.get(i);
             return out;
+        }
+
+        /** Where the main screen's rows start: higher past seven rows, so what's under them (the TMDB credit) stays on screen. */
+        private float mainTop() {
+            return LIST_TOP - Math.max(0, mainRows.length - 7) * (ROW_H + ROW_GAP);
         }
 
         /** The main screen's row at position i. */
@@ -466,7 +470,7 @@ public class SettingsActivity extends Activity {
                 case WIFI: return Math.min(PICK_VISIBLE, 1 + wifiCount());
                 case BT: return Math.min(PICK_VISIBLE, 1 + btCount());
                 case BT_DEVICE: return btActions().length;
-                case HOME_SETTINGS: return settingLabels().length;
+                case HOME_SETTINGS: return listLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
                 default: return Prefs.KEYS.length;
@@ -512,7 +516,7 @@ public class SettingsActivity extends Activity {
             String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", HomeMode.XGIMI ? wifiSummary() : "", btSummary()};
             for (int i = 0; i < rowCount(); i++) {
                 int row = mainRow(i);
-                float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
+                float y = (mainTop() + i * (ROW_H + ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + ROW_H * k);
                 float f = drawRowBackground(c, i);
                 int ink = blend(0xF2FFFFFF, INK, f);
@@ -543,7 +547,7 @@ public class SettingsActivity extends Activity {
                 }
             }
 
-            float y = (LIST_TOP + rowCount() * (ROW_H + ROW_GAP) + 20) * k;
+            float y = (mainTop() + rowCount() * (ROW_H + ROW_GAP) + 20) * k;
             String error = state.optString("error");
             if (working && (busyText.contains("Permitir") || busyText.contains("Allow") || busyText.contains("разрешите"))) {
                 c.drawText(Ui.tr("Na TV: marque “Sempre permitir” e aperte OK.", "On the TV: tick “Always allow” and press OK."),
@@ -842,6 +846,15 @@ public class SettingsActivity extends Activity {
             return v;
         }
 
+        /** The rows of the list screens: Home Settings, Remote Buttons. */
+        private String[] listLabels() {
+            return screen == REMOTE_KEYS ? keyLabels() : settingLabels();
+        }
+
+        private String[] listValues() {
+            return screen == REMOTE_KEYS ? keyValues() : settingValues();
+        }
+
         /** Installed TV apps, by name, after "Nothing": what a remote button can open. */
         private void loadApps() {
             List<String[]> found = new ArrayList<>();
@@ -954,6 +967,13 @@ public class SettingsActivity extends Activity {
 
         private int listSize() {
             return screen == SHELF_EDIT ? shelfRows.size() : screen == WIFI ? 1 + wifiCount() : screen == BT ? 1 + btCount() : pickLabels.size();
+        }
+
+        /** The value after (or before) `now` in `values`, round; a value not in the list goes to an end. */
+        private static int nextValue(int[] values, int now, int dir) {
+            int at = -1;
+            for (int i = 0; i < values.length; i++) if (values[i] == now) at = i;
+            return values[at < 0 ? (dir > 0 ? 0 : values.length - 1) : (at + dir + values.length) % values.length];
         }
 
         // MARK: - Wi-Fi (XGIMI projectors)
@@ -1568,8 +1588,8 @@ public class SettingsActivity extends Activity {
 
         private void drawList(Canvas c) {
             boolean keys = screen == REMOTE_KEYS;
-            String[] labels = keys ? keyLabels() : settingLabels();
-            String[] values = keys ? keyValues() : settingValues();
+            String[] labels = listLabels();
+            String[] values = listValues();
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
             c.drawText(keys ? Ui.tr("Botões do Controle", "Remote Buttons") : Ui.tr("Ajustes do Início", "Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
@@ -1578,7 +1598,7 @@ public class SettingsActivity extends Activity {
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                boolean locked = !keys && i >= COIN_ROWS && !Prefs.quotes();
+                boolean locked = screen == HOME_SETTINGS && i >= COIN_ROWS && !Prefs.quotes();
                 rowValue.setColor(blend(locked ? 0x59FFFFFF : 0xB3FFFFFF, locked ? 0x591C1C1E : 0xB31C1C1E, f));
                 if (locked) rowLabel.setColor(blend(0x73FFFFFF, 0x731C1C1E, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);

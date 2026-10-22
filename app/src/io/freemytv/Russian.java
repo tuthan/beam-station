@@ -58,6 +58,8 @@ final class Russian {
             case "Searching for networks…": return "Поиск сетей…";
             case "Wi-Fi is off.": return "Wi-Fi выключен.";
             case "OK connects. Saved networks join by themselves.": return "OK — подключиться. Сохранённые сети подключаются сами.";
+            case "Picture": return "Изображение";
+            case "Movie": return "Кино";
             case "HDMI Inputs": return "Входы HDMI";
             case "Inputs": return "Входы";
             case "Shortcuts": return "Ярлыки";

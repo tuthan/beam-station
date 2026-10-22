@@ -52,6 +52,8 @@ final class German {
             case "Searching for networks…": return "Suche nach Netzwerken…";
             case "Wi-Fi is off.": return "WLAN ist aus.";
             case "OK connects. Saved networks join by themselves.": return "OK verbindet. Gespeicherte Netzwerke verbinden sich von selbst.";
+            case "Picture": return "Bild";
+            case "Movie": return "Film";
             case "HDMI Inputs": return "HDMI-Eingänge";
             case "Inputs": return "Eingänge";
             case "Shortcuts": return "Verknüpfungen";
