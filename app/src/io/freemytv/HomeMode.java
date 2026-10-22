@@ -84,7 +84,8 @@ final class HomeMode {
 
     /**
      * XGIMI projectors: their apps all run as the shared system UID, which also owns every saved Wi-Fi network, so
-     * only XGIMI Home is turned off (Android keeps networks saved by a shared UID: their creator matches no package).
+     * only XGIMI Home is turned off, and PRIVACY when asked for (Android keeps networks saved by a shared UID: their
+     * creator matches no package).
      * Its chooser (xgimiframeworkui) opens XGIMI Home whenever it is on, and answers the HOME query itself, so the
      * stock home screen is named here.
      */
@@ -93,6 +94,17 @@ final class HomeMode {
 
     /** The voice assistant, only with disable_assistant=true in config.properties (the mic button stops working). */
     static final String[] ASSISTANT = {"com.google.android.katniss", "com.android.hotwordenrollment.okgoogle"};
+
+    /**
+     * Telemetry, only with disable_telemetry=true in config.properties (never the default). XGIMI's run as the shared
+     * system UID, so the Wi-Fi-owner check can't see them: each must pass note 01's check by hand first. Not xrmservice
+     * (the resource manager), iot, xgimiiotserver or msgcenter (the phone app's push channel).
+     */
+    static final String[] PRIVACY = {
+        "com.xgimi.datareporter", "com.xgimi.bugreportsender",                       // XGIMI usage reports, bug reports
+        "com.xgimi.adservice", "com.xgimi.minitvfactory",                            // ads, factory test
+        "com.xgimi.newappmarket",                                                     // app market: posts the installed apps
+    };
 
     /** Never turned off, not even by mistake (picture, sound, inputs, remote, store). Checked before every disable. */
     private static final Set<String> PROTECTED = new HashSet<>(Arrays.asList(
@@ -346,7 +358,8 @@ final class HomeMode {
             String home = originalHome(s);
             Set<String> toEnable = new HashSet<>(stringList(s, "disabled"));
             for (String pkg : targets(home, originalDream(s), true)) {
-                if (!Arrays.asList(DEBLOAT).contains(pkg) && !Arrays.asList(ASSISTANT).contains(pkg)) toEnable.add(pkg);
+                if (!Arrays.asList(DEBLOAT).contains(pkg) && !Arrays.asList(ASSISTANT).contains(pkg)
+                        && !Arrays.asList(PRIVACY).contains(pkg)) toEnable.add(pkg);
             }
             toEnable.removeAll(stringList(s, "keptOff"));
             Set<String> present = packages(adb, "");
@@ -582,6 +595,7 @@ final class HomeMode {
         List<String> out = new ArrayList<>();
         String homePkg = packageOf(home);
         if (homePkg != null && !homePkg.equals(PKG)) out.add(homePkg);
+        if (Config.DISABLE_TELEMETRY) out.addAll(Arrays.asList(PRIVACY));
         if (XGIMI) return out;
         if (TV_LAUNCHER.equals(homePkg)) out.add(TV_RECOMMENDATIONS);
         if (setupHome) out.add(GOOGLE_SETUP);
