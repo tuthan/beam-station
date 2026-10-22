@@ -1,16 +1,16 @@
-package io.github.tuthan.beamstation;
+package io.github.tuthan.beamstation
 
-import android.graphics.RuntimeShader;
+import android.graphics.RuntimeShader
+import java.util.Calendar
+import kotlin.math.max
 
 /**
  * Aurora and glass (Liquid Glass) drawn on the GPU with AGSL. The aurora is procedural, so the glass doesn't need to
  * blur what's behind it: it uses the same aurora without detail (the frosted glass, computed in Frost) and shifts the
  * sample near the edge (the refraction). The glass never sits on top of an app or a video.
  */
-final class Shaders {
-    private Shaders() {}
-
-    private static final String COMMON =
+internal object Shaders {
+    private const val COMMON =
         "uniform float2 res;\n" +            // full screen size (px): the same math in every layer
         "uniform float t;\n" +               // seconds
         "uniform float speed;\n" +
@@ -62,18 +62,18 @@ final class Shaders {
         "  float vig = 1.0 - 0.38 * smoothstep(0.35, 1.0, uv.y) - 0.2 * smoothstep(0.45, 0.95, abs(uv.x - 0.5) * 1.6);\n" +
         "  float scrim = 1.0 - 0.22 * (1.0 - smoothstep(0.0, 0.42, uv.y));\n" +
         "  return col * vig * scrim * (1.0 - dim);\n" +
-        "}\n";
+        "}\n"
 
     /**
      * Background: drawn into a small layer (¼ scale) and scaled up; gradients lose nothing. Noise of ±½ a color level
      * breaks up the banding a dark gradient would show on a big screen.
      */
-    static final String AURORA = COMMON +
+    const val AURORA = COMMON +
         "uniform float2 layer;\n" +
         "half4 main(float2 xy) {\n" +
         "  half3 col = aurora(xy / layer, 1.0) + (hash(xy) - 0.5) / 255.0;\n" +
         "  return half4(col, 1.0);\n" +
-        "}\n";
+        "}\n"
 
     /**
      * Glass in a rounded-corner shape. The glass background comes from `frost`: the aurora without detail in a 48×27
@@ -84,7 +84,7 @@ final class Shaders {
      * (focus); body: 1 = full glass, 0 = only the rim highlight (on top of an app icon). Returns premultiplied color
      * (Skia's convention).
      */
-    static final String GLASS =
+    const val GLASS =
         "uniform shader frost;\n" +
         "uniform float2 frostScale;\n" +     // frosted image size / screen size
         "uniform float2 offset;\n" +         // layer offset on screen (the layer moves without being redrawn)
@@ -128,7 +128,7 @@ final class Shaders {
         "  }\n" +
         "  float a = body + hl * (1.0 - body);\n" +
         "  return half4((col * body + half3(hl)) * aa, a * aa);\n" +
-        "}\n";
+        "}\n"
 
     /**
      * Liquid Glass (macOS 27 style) for the shelf and the cards: the background shows through the glass, lightly
@@ -138,7 +138,7 @@ final class Shaders {
      * `imageB`/`mixB`: the next photo during a transition, blended here (no texture rebuild every frame). band = width
      * of the thick rim (px), refraction = how much it bends (px), specular = highlight strength. Premultiplied color.
      */
-    static final String LIQUID =
+    const val LIQUID =
         "uniform shader imageA;\n" +
         "uniform shader imageB;\n" +
         "uniform float mixB;\n" +
@@ -196,7 +196,7 @@ final class Shaders {
         "  col += half3(spec * specular);\n" +
         "  col += half3((hash(xy) - 0.5) * 0.0039);\n" +
         "  return half4(col * half(aa), half(aa));\n" +
-        "}\n";
+        "}\n"
 
     /**
      * Glass clock for the screensaver (like the iOS 26 lock screen's): the digits are clear glass over the photo
@@ -207,7 +207,7 @@ final class Shaders {
      * and an echo on the opposite side. Photos: `imageA`/`imageB` with each one's on-screen position (x, y) and scale
      * (the same slow zoom as the background), and `mixB` during a transition. Premultiplied color.
      */
-    static final String GLASS_TEXT =
+    const val GLASS_TEXT =
         "uniform shader imageA;\n" +
         "uniform shader imageB;\n" +
         "uniform shader slope;\n" +
@@ -257,61 +257,64 @@ final class Shaders {
         "  col *= half(1.0 - 0.1 * back * bend * (1.0 - rim));\n" +
         "  half k = a * half(alpha);\n" +
         "  return half4(col * k, k);\n" +
-        "}\n";
+        "}\n"
 
     /** Aurora colors: three tones (background, middle, highlight), from 0 to 1. */
-    static final class Palette {
-        final float[] c = new float[9];
+    class Palette {
+        @JvmField val c = FloatArray(9)
 
-        Palette set(int a, int b, int d) {
-            put(0, a); put(3, b); put(6, d);
-            return this;
+        fun set(a: Int, b: Int, d: Int): Palette {
+            put(0, a); put(3, b); put(6, d)
+            return this
         }
 
-        private void put(int i, int rgb) {
-            c[i] = ((rgb >> 16) & 255) / 255f;
-            c[i + 1] = ((rgb >> 8) & 255) / 255f;
-            c[i + 2] = (rgb & 255) / 255f;
+        private fun put(i: Int, rgb: Int) {
+            c[i] = ((rgb shr 16) and 255) / 255f
+            c[i + 1] = ((rgb shr 8) and 255) / 255f
+            c[i + 2] = (rgb and 255) / 255f
         }
 
-        int color(int i) {
-            return 0xFF000000 | (Math.round(c[i * 3] * 255) << 16) | (Math.round(c[i * 3 + 1] * 255) << 8) | Math.round(c[i * 3 + 2] * 255);
-        }
+        fun color(i: Int): Int = 0xFF000000.toInt() or (Math.round(c[i * 3] * 255) shl 16) or
+            (Math.round(c[i * 3 + 1] * 255) shl 8) or Math.round(c[i * 3 + 2] * 255)
 
         /** Luminance of the brightest tone (0 to 1): bright palettes (day, dawn) get darkened a little. */
-        float brightest() {
-            float max = 0;
-            for (int i = 0; i < 9; i += 3) max = Math.max(max, 0.2126f * c[i] + 0.7152f * c[i + 1] + 0.0722f * c[i + 2]);
-            return max;
+        fun brightest(): Float {
+            var max = 0f
+            for (i in 0 until 9 step 3) max = max(max, 0.2126f * c[i] + 0.7152f * c[i + 1] + 0.0722f * c[i + 2])
+            return max
         }
 
-        void apply(RuntimeShader s) {
-            s.setFloatUniform("c0", c[0], c[1], c[2]);
-            s.setFloatUniform("c1", c[3], c[4], c[5]);
-            s.setFloatUniform("c2", c[6], c[7], c[8]);
+        fun apply(s: RuntimeShader) {
+            s.setFloatUniform("c0", c[0], c[1], c[2])
+            s.setFloatUniform("c1", c[3], c[4], c[5])
+            s.setFloatUniform("c2", c[6], c[7], c[8])
         }
     }
 
     // Sky phases through the day, each build its own. Before Android 13 only the first two show, as a gradient.
-    private static final int[] NIGHT, DAWN, DAY, SUNSET, DUSK;
+    private val NIGHT: IntArray
+    private val DAWN: IntArray
+    private val DAY: IntArray
+    private val SUNSET: IntArray
+    private val DUSK: IntArray
 
-    static {
-        if (Config.DEVICE.equals("rokid")) {
+    init {
+        if (Config.DEVICE == "rokid") {
             // The glasses: in them black is see-through and bright colors glare, so every phase stays near black with
             // cool light (cyan, blue, violet).
-            NIGHT = new int[] {0x020409, 0x0A2234, 0x1E8C9C};
-            DAWN = new int[] {0x04060F, 0x182850, 0x5CC8C0};
-            DAY = new int[] {0x041020, 0x0E3A5C, 0x38B8D8};
-            SUNSET = new int[] {0x07040F, 0x281850, 0xB45CC8};
-            DUSK = new int[] {0x03050E, 0x18184A, 0x6A54D8};
+            NIGHT = intArrayOf(0x020409, 0x0A2234, 0x1E8C9C)
+            DAWN = intArrayOf(0x04060F, 0x182850, 0x5CC8C0)
+            DAY = intArrayOf(0x041020, 0x0E3A5C, 0x38B8D8)
+            SUNSET = intArrayOf(0x07040F, 0x281850, 0xB45CC8)
+            DUSK = intArrayOf(0x03050E, 0x18184A, 0x6A54D8)
         } else {
             // The projector: a dark room lit by its beam, so even the day stays deep (plum and wine) and the light is
             // warm (ember, amber).
-            NIGHT = new int[] {0x0C0816, 0x361A40, 0x8A4A2C};
-            DAWN = new int[] {0x1E1226, 0x9A4A3C, 0xF0A060};
-            DAY = new int[] {0x1C1230, 0x83365A, 0xF0A050};
-            SUNSET = new int[] {0x22102A, 0xB0443C, 0xF59A48};
-            DUSK = new int[] {0x140C26, 0x4E2468, 0xC8703C};
+            NIGHT = intArrayOf(0x0C0816, 0x361A40, 0x8A4A2C)
+            DAWN = intArrayOf(0x1E1226, 0x9A4A3C, 0xF0A060)
+            DAY = intArrayOf(0x1C1230, 0x83365A, 0xF0A050)
+            SUNSET = intArrayOf(0x22102A, 0xB0443C, 0xF59A48)
+            DUSK = intArrayOf(0x140C26, 0x4E2468, 0xC8703C)
         }
     }
 
@@ -319,49 +322,53 @@ final class Shaders {
      * Palette for the sun's current position at your location. Uses the sunrise and sunset times from the last weather
      * fetch (they shift ~1 min a day, so yesterday's times are fine today); without data, 5:30 and 17:40.
      */
-    static void sky(Palette out, long now, long sunrise, long sunset) {
-        java.util.Calendar cal = java.util.Calendar.getInstance();
-        cal.setTimeInMillis(now);
-        cal.set(java.util.Calendar.HOUR_OF_DAY, 0);
-        cal.set(java.util.Calendar.MINUTE, 0);
-        cal.set(java.util.Calendar.SECOND, 0);
-        cal.set(java.util.Calendar.MILLISECOND, 0);
-        long midnight = cal.getTimeInMillis();
-        long rise = midnight + timeOfDay(sunrise, (5 * 60 + 30) * 60_000L);
-        long set = midnight + timeOfDay(sunset, (17 * 60 + 40) * 60_000L);
-        long m = 60_000L;
-        long[] at = {rise - 60 * m, rise - 15 * m, rise + 45 * m, set - 45 * m, set, set + 45 * m, set + 105 * m};
-        int[][] key = {NIGHT, DAWN, DAY, DAY, SUNSET, DUSK, NIGHT};
-        if (now <= at[0] || now >= at[at.length - 1]) {
-            out.set(NIGHT[0], NIGHT[1], NIGHT[2]);
-            return;
+    @JvmStatic
+    fun sky(out: Palette, now: Long, sunrise: Long, sunset: Long) {
+        val cal = Calendar.getInstance()
+        cal.timeInMillis = now
+        cal.set(Calendar.HOUR_OF_DAY, 0)
+        cal.set(Calendar.MINUTE, 0)
+        cal.set(Calendar.SECOND, 0)
+        cal.set(Calendar.MILLISECOND, 0)
+        val midnight = cal.timeInMillis
+        val rise = midnight + timeOfDay(sunrise, (5 * 60 + 30) * 60_000L)
+        val set = midnight + timeOfDay(sunset, (17 * 60 + 40) * 60_000L)
+        val m = 60_000L
+        val at = longArrayOf(rise - 60 * m, rise - 15 * m, rise + 45 * m, set - 45 * m, set, set + 45 * m, set + 105 * m)
+        val key = arrayOf(NIGHT, DAWN, DAY, DAY, SUNSET, DUSK, NIGHT)
+        if (now <= at[0] || now >= at[at.size - 1]) {
+            out.set(NIGHT[0], NIGHT[1], NIGHT[2])
+            return
         }
-        for (int i = 0; i < at.length - 1; i++) {
+        for (i in 0 until at.size - 1) {
             if (now >= at[i] && now < at[i + 1]) {
-                float f = (float) (now - at[i]) / (at[i + 1] - at[i]);
-                out.set(mix(key[i][0], key[i + 1][0], f), mix(key[i][1], key[i + 1][1], f), mix(key[i][2], key[i + 1][2], f));
-                return;
+                val f = (now - at[i]).toFloat() / (at[i + 1] - at[i])
+                out.set(mix(key[i][0], key[i + 1][0], f), mix(key[i][1], key[i + 1][1], f),
+                    mix(key[i][2], key[i + 1][2], f))
+                return
             }
         }
     }
 
     /** Time of day (ms since local midnight) of an instant; `fallback` if there is no data. */
-    static long timeOfDay(long at, long fallback) {
-        if (at == 0) return fallback;
-        java.util.Calendar c = java.util.Calendar.getInstance();
-        c.setTimeInMillis(at);
-        return ((c.get(java.util.Calendar.HOUR_OF_DAY) * 60L + c.get(java.util.Calendar.MINUTE)) * 60 + c.get(java.util.Calendar.SECOND)) * 1000L;
+    @JvmStatic
+    fun timeOfDay(at: Long, fallback: Long): Long {
+        if (at == 0L) return fallback
+        val c = Calendar.getInstance()
+        c.timeInMillis = at
+        return ((c.get(Calendar.HOUR_OF_DAY) * 60L + c.get(Calendar.MINUTE)) * 60 + c.get(Calendar.SECOND)) * 1000L
     }
 
     /** Screensaver: always the night palette, by day and by night. */
-    static void dream(Palette out) {
-        out.set(NIGHT[0], NIGHT[1], NIGHT[2]);
+    @JvmStatic
+    fun dream(out: Palette) {
+        out.set(NIGHT[0], NIGHT[1], NIGHT[2])
     }
 
-    private static int mix(int a, int b, float f) {
-        int r = Math.round(((a >> 16) & 255) * (1 - f) + ((b >> 16) & 255) * f);
-        int g = Math.round(((a >> 8) & 255) * (1 - f) + ((b >> 8) & 255) * f);
-        int bl = Math.round((a & 255) * (1 - f) + (b & 255) * f);
-        return (r << 16) | (g << 8) | bl;
+    private fun mix(a: Int, b: Int, f: Float): Int {
+        val r = Math.round(((a shr 16) and 255) * (1 - f) + ((b shr 16) and 255) * f)
+        val g = Math.round(((a shr 8) and 255) * (1 - f) + ((b shr 8) and 255) * f)
+        val bl = Math.round((a and 255) * (1 - f) + (b and 255) * f)
+        return (r shl 16) or (g shl 8) or bl
     }
 }
