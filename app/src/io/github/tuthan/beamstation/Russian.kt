@@ -111,6 +111,7 @@ internal object Russian {
         "Home puts the glasses back in 2D." -> "Главный экран возвращает очки в 2D."
         "Switch to 3D" -> "Включить 3D"
         "Switch to 2D" -> "Включить 2D"
+        "AR Mode" -> "Режим AR"
         "The glasses are in 3D." -> "Очки в режиме 3D."
         "The glasses are in 2D." -> "Очки в режиме 2D."
         "Brightness" -> "Яркость"

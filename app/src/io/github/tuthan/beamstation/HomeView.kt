@@ -2289,6 +2289,10 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
             else Ui.tr("Timer para dormir: ", "Sleep timer: ") + Power.duration(next) + ".")
             return
         }
+        if (item.kind == HomeApps.AR_MODE) {
+            if (!HomeApps.openAr(activity)) showToast(Ui.tr("Não deu para abrir ", "Couldn't open ") + item.label + ".")
+            return
+        }
         if (item.kind == HomeApps.GLASSES_3D) {
             val to3d = item.key == "glasses-3d"
             val app = activity.applicationContext

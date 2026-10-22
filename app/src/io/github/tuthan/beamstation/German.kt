@@ -102,6 +102,7 @@ internal object German {
         "Home puts the glasses back in 2D." -> "Der Startbildschirm schaltet die Brille zurück auf 2D."
         "Switch to 3D" -> "Zu 3D wechseln"
         "Switch to 2D" -> "Zu 2D wechseln"
+        "AR Mode" -> "AR-Modus"
         "The glasses are in 3D." -> "Die Brille ist in 3D."
         "The glasses are in 2D." -> "Die Brille ist in 2D."
         "Brightness" -> "Helligkeit"

@@ -1,5 +1,6 @@
 """Draws Station AR's icon and TV banner (Pillow) into ar/app/src/main/res/drawable-nodpi, with the home screen's
-drawing helpers (tools/make_art.py at the top of the repository).
+drawing helpers (tools/make_art.py at the top of the repository). Also Station Home's way in, in the Rokid build's
+assets: the drawer's AR Mode symbol (symbols/ar.png, white) and the shelf logo (logos/stationar.png, in colour).
 Usage: python3 ar/tools/make_art.py"""
 import os
 import sys
@@ -36,9 +37,24 @@ DEV = {
     "glyph": workspace,
 }
 
+def logo(size=512):
+    """The mark in the icon's gradient, no background: a shelf logo, like the streaming services' on their dark cards."""
+    s = size * 4
+    alpha = DEV["glyph"](s)
+    img = make_art.gradient(s, s, DEV["stops"]).convert("RGBA")
+    img.putalpha(alpha)
+    img = img.resize((size, size), Image.LANCZOS)
+    return img.crop(img.getchannel("A").getbbox())
+
+
 if __name__ == "__main__":
     res = os.path.join(os.path.dirname(HERE), "app/src/main/res/drawable-nodpi")
     os.makedirs(res, exist_ok=True)
     make_art.mark(DEV, 192).save(os.path.join(res, "icon.png"))
     make_art.banner(DEV).save(os.path.join(res, "banner.png"))
+    home = os.path.join(REPO, "app/devices/rokid/assets")
+    os.makedirs(os.path.join(home, "symbols"), exist_ok=True)
+    os.makedirs(os.path.join(home, "logos"), exist_ok=True)
+    make_art.symbol(DEV, 160).save(os.path.join(home, "symbols/ar.png"))
+    logo().save(os.path.join(home, "logos/stationar.png"))
     print("ok")

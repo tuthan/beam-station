@@ -61,6 +61,11 @@ internal object HomeApps {
     const val GLASSES_3D = 12
     /** The Rokid Station's sleep timer button (Power): each press steps it on (off, 30, 60, 90, 120 min). */
     const val SLEEP_TIMER = 13
+    /** The Rokid Station's AR Mode button: opens Station AR (STATION_AR) in AR, through its ENTER_AR intent. */
+    const val AR_MODE = 15
+    /** Station AR, the glasses' AR mode (ar/ in this repository): its own app, next to this one, on the Rokid only. */
+    const val STATION_AR = "io.github.tuthan.stationar"
+    private const val ENTER_AR = "io.github.tuthan.stationar.action.ENTER_AR"
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     const val TILE_W = 384
     const val TILE_H = 216
@@ -91,6 +96,8 @@ internal object HomeApps {
      * (YouTube); empty = the art's colors as they are. Last, a visual size tweak for the logo. Edit freely.
      */
     private val SHELF = arrayOf(
+        // Station AR, pinned first where it's installed (the Rokid Station); its logo is in the Rokid build's assets.
+        arrayOf("stationar", "Station AR", STATION_AR, "14B8A6", "", "1"),
         arrayOf("netflix", "Netflix", "com.netflix.ninja", "E50914", "", "1"),
         arrayOf("youtube", "YouTube", "com.google.android.youtube.tv", "FF0033", "play", "1"),
         arrayOf("prime", "Prime Video", "com.amazon.amazonvideo.livingroom", "1A98FF", "tint", "0.96"),
@@ -216,8 +223,9 @@ internal object HomeApps {
 
     /**
      * Shortcuts in the bottom drawer (on XGIMI projectors, also focus, keystone, speaker mode and eco mode; on the
-     * Rokid Station, the sleep timer, and 2D/3D with glasses plugged in). `glasses`: also asks the glasses for their mode
-     * (slow: background only); without it, the 2D/3D button waits for the next load.
+     * Rokid Station, the sleep timer, and with glasses plugged in 2D/3D and, when Station AR is installed, AR Mode).
+     * `glasses`: also asks the glasses for their mode (slow: background only); without it, the 2D/3D and AR Mode buttons
+     * wait for the next load.
      */
     @JvmStatic
     fun drawerShortcuts(c: Context, glasses: Boolean): MutableList<Item> {
@@ -242,7 +250,23 @@ internal object HomeApps {
         } else if (mode >= 0) {
             items.add(shortcut(GLASSES_3D, "glasses-3d", Ui.tr("Mudar para 3D", "Switch to 3D"), "3d"))
         }
+        if (mode >= 0 && HomeMode.ROKID && launchIntent(c.packageManager, STATION_AR) != null) {
+            items.add(shortcut(AR_MODE, "ar-mode", Ui.tr("Modo AR", "AR Mode"), "ar"))
+        }
         return items
+    }
+
+    /** Opens Station AR straight into AR (the AR Mode button and its shelf card); false when it can't. */
+    @JvmStatic
+    fun openAr(a: Activity): Boolean {
+        try {
+            a.startActivity(Intent(ENTER_AR).setPackage(STATION_AR).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            return true
+        } catch (e: RuntimeException) {   // only ActivityNotFoundException and SecurityException
+            if (!cannotStart(e)) throw e
+            AppLog.w("couldn't open Station AR: " + e.message)
+            return false
+        }
     }
 
     /** A streaming service's app (the "Watch" button of the featured pick). */
@@ -435,6 +459,7 @@ internal object HomeApps {
         var plain: Intent? = null   // plain: the app's own home, when it won't take the title's address
         when (item.kind) {
             APP -> {
+                if (item.pkg == STATION_AR && HomeMode.ROKID && openAr(a)) return true
                 // The SDK takes no null package here (Java passed it on; no APP item is without one): none opens nothing.
                 val pkg = item.pkg
                 intent = if (pkg != null) launchIntent(a.packageManager, pkg) else null

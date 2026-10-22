@@ -101,6 +101,7 @@ internal object Spanish {
         "Home puts the glasses back in 2D." -> "Inicio devuelve las gafas a 2D."
         "Switch to 3D" -> "Cambiar a 3D"
         "Switch to 2D" -> "Cambiar a 2D"
+        "AR Mode" -> "Modo AR"
         "The glasses are in 3D." -> "Gafas en 3D."
         "The glasses are in 2D." -> "Gafas en 2D."
         "Brightness" -> "Brillo"

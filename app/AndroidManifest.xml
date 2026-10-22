@@ -34,6 +34,7 @@
         <package android:name="com.peacocktv.peacockandroid" />
         <package android:name="com.globo.globotv" />
         <package android:name="com.spotify.tv.android" />
+        <package android:name="io.github.tuthan.stationar" />
         <package android:name="com.google.android.tv" />
         <package android:name="com.android.newsettings" />
         <package android:name="com.xgimi.systemui" />
