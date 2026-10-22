@@ -292,12 +292,13 @@ final class Shaders {
         }
     }
 
-    // Sky phases through the day.
-    private static final int[] NIGHT = {0x070B1E, 0x16225A, 0x4B2F8F};
-    private static final int[] DAWN = {0x24183F, 0xE89A55, 0xF6D59A};
-    private static final int[] DAY = {0x1E57C8, 0x4FB9EC, 0x9EE2EE};
-    private static final int[] SUNSET = {0x2E1650, 0xE2546C, 0xF39A4F};
-    private static final int[] DUSK = {0x10173A, 0x36348A, 0x8A4BB0};
+    // Sky phases through the day, Beam Home's: a dark room lit by the projector, so even the day stays deep (plum and
+    // wine) and the light is warm (ember, amber). Before Android 13 only the first two show, as a gradient.
+    private static final int[] NIGHT = {0x0C0816, 0x361A40, 0x8A4A2C};
+    private static final int[] DAWN = {0x1E1226, 0x9A4A3C, 0xF0A060};
+    private static final int[] DAY = {0x1C1230, 0x83365A, 0xF0A050};
+    private static final int[] SUNSET = {0x22102A, 0xB0443C, 0xF59A48};
+    private static final int[] DUSK = {0x140C26, 0x4E2468, 0xC8703C};
 
     /**
      * Palette for the sun's current position at your location. Uses the sunrise and sunset times from the last weather

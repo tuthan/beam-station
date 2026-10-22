@@ -19,21 +19,23 @@ FOCUS_FILE = os.path.join(PHOTOS, "focus.json")
 W, H = 1280, 720
 
 # (x, y, radius, color, strength): positions and radius as a fraction of the width / height.
-LIGHT_BASE = (246, 244, 250)
+# Beam Home: a dark room and a projector's warm beam. By day amber light, rose and lilac; at night the beam's glow over
+# plum, wine and indigo. The projector starts in the dark look (Prefs.theme).
+LIGHT_BASE = (250, 246, 242)
 LIGHT = [
-    (0.12, 0.18, 0.55, (255, 211, 176), 0.95),   # peach
-    (0.88, 0.12, 0.50, (255, 192, 212), 0.85),   # pink
-    (0.82, 0.88, 0.55, (210, 200, 255), 0.95),   # lavender
-    (0.15, 0.92, 0.50, (186, 224, 250), 0.90),   # sky
-    (0.52, 0.50, 0.40, (214, 240, 226), 0.55),   # mint
+    (0.86, 0.10, 0.55, (255, 214, 168), 0.95),   # amber light
+    (0.14, 0.16, 0.50, (252, 204, 206), 0.80),   # rose
+    (0.84, 0.90, 0.55, (226, 210, 248), 0.90),   # lilac
+    (0.14, 0.90, 0.50, (255, 230, 196), 0.85),   # honey
+    (0.52, 0.50, 0.40, (250, 228, 222), 0.55),   # blush
 ]
-DARK_BASE = (9, 11, 22)
+DARK_BASE = (10, 8, 16)
 DARK = [
-    (0.15, 0.12, 0.55, (44, 40, 122), 0.95),     # indigo
-    (0.88, 0.18, 0.50, (86, 44, 138), 0.85),     # violet
-    (0.12, 0.92, 0.50, (12, 84, 108), 0.85),     # teal
-    (0.86, 0.90, 0.50, (118, 36, 98), 0.70),     # magenta
-    (0.52, 0.52, 0.40, (22, 30, 80), 0.60),
+    (0.86, 0.10, 0.55, (112, 54, 26), 0.90),     # the beam's glow
+    (0.14, 0.14, 0.50, (54, 22, 70), 0.90),      # plum
+    (0.12, 0.92, 0.50, (82, 22, 48), 0.80),      # wine
+    (0.86, 0.90, 0.50, (30, 24, 80), 0.85),      # indigo
+    (0.52, 0.52, 0.40, (30, 14, 34), 0.60),
 ]
 
 
