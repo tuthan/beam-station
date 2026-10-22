@@ -203,7 +203,7 @@ final class German {
                 return "die Ersteinrichtung des Fernsehers hat das WLAN gespeichert, und sie auszuschalten würde diese Netzwerke löschen. "
                         + "Unter Einstellungen → Netzwerk und Internet das Netzwerk entfernen und neu verbinden (Netzwerke außer Reichweite "
                         + "erscheinen dort nicht: Claude Code entfernt sie vom Computer aus), dann noch einmal versuchen.";
-            // Home Settings, Shelf and Remote Buttons
+            // Home Settings and Shelf
             case "Language": return "Sprache";
             case "Temperature": return "Temperatur";
             case "Theme": return "Design";
@@ -231,27 +231,9 @@ final class German {
             case "Shelf": return "Leiste";
             case "on the shelf, place ": return "in der Leiste, Platz ";
             case "not on the shelf": return "nicht in der Leiste";
-            case "Remote Buttons": return "Fernbedienungstasten";
-            case "Netflix button": return "Netflix-Taste";
-            case "YouTube button": return "YouTube-Taste";
-            case "Prime Video button": return "Prime-Video-Taste";
-            case "TCL Channel button": return "TCL-Channel-Taste";
-            case "Tabii button": return "Tabii-Taste";
-            case "Nothing": return "Nichts";
-            case "BRAVIA CORE button": return "BRAVIA-CORE-Taste";
-            case "Disney+ button": return "Disney+-Taste";
-            case "Crunchyroll button": return "Crunchyroll-Taste";
-            case "Sony default": return "Sony-Standard";
-            case "Sony default: the button opens what it always did.": return "Sony-Standard: Die Taste öffnet, was sie immer geöffnet hat.";
-            case "Not installed": return "Nicht installiert";
             case ", selected": return ", ausgewählt";
             case "OK or the arrows change the value.": return "OK oder die Pfeiltasten ändern den Wert.";
             case "OK picks, Back cancels.": return "OK wählt aus, Zurück bricht ab.";
-            case "Disney and Globoplay: the TV itself controls those buttons.": return "Disney und Globoplay: Diese Tasten steuert der Fernseher selbst.";
-            case "YouTube, Prime Video and Google Play: the TV itself controls those buttons.": return "YouTube, Prime Video und Google Play: Diese Tasten steuert der Fernseher selbst.";
-            case "Netflix, YouTube and Prime Video: the TV itself controls those buttons.": return "Netflix, YouTube und Prime Video: Diese Tasten steuert der Fernseher selbst.";
-            case "The other buttons: the TV itself controls them.": return "Die anderen Tasten steuert der Fernseher selbst.";
-            case "TCL remote buttons: on this TV they work as always.": return "TCL-Fernbedienung: Die Tasten funktionieren hier wie immer.";
             default:
                 if (english.startsWith(Config.APP_NAME + " is on: new home screen and screensaver, ")) {
                     return Config.APP_NAME + " ist an: neuer Startbildschirm und Bildschirmschoner, "

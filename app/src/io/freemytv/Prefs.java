@@ -1,19 +1,8 @@
 package io.freemytv;
 
-import android.content.BroadcastReceiver;
 import android.content.Context;
-import android.content.Intent;
-import android.content.IntentFilter;
 import android.content.SharedPreferences;
-import android.os.UserManager;
-import android.view.KeyEvent;
 
-import java.io.BufferedReader;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.FileReader;
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -25,22 +14,6 @@ import java.util.Locale;
 final class Prefs {
     private Prefs() {}
 
-    /** Remote keys we handle, with the app each opens until the user picks another. Codes read from the TCL's log. */
-    static final int KEY_NETFLIX = 4062, KEY_YOUTUBE = 190, KEY_PRIME = 4099, KEY_TCL_CHANNEL = 4020;
-    /** The Netflix button on Vestel TVs and Formovie projectors: STEM_1, which the TV hands to its Netflix key receiver (dumpsys window policy). */
-    static final int KEY_STEM_NETFLIX = KeyEvent.KEYCODE_STEM_1;
-    /** KTC's (NextStar) Tabii button: BUTTON_8, which the TV hands to its hot-key receiver (its log: "keycode = 195"). */
-    static final int KEY_KTC_TABII = KeyEvent.KEYCODE_BUTTON_8;
-    /** Sony's app buttons, as SONY_KEY + scan code (read from a BRAVIA's log; the key codes are shared). */
-    static final int SONY_KEY = 100_000;
-    static final int KEY_SONY_CORE = SONY_KEY + 496, KEY_SONY_NETFLIX = SONY_KEY + 583, KEY_SONY_DISNEY = SONY_KEY + 491,
-            KEY_SONY_PRIME = SONY_KEY + 490, KEY_SONY_YOUTUBE = SONY_KEY + 485, KEY_SONY_CRUNCHYROLL = SONY_KEY + 507;
-    static final int[] KEYS = RemoteKeys.SONY
-            ? new int[] {KEY_SONY_CORE, KEY_SONY_NETFLIX, KEY_SONY_DISNEY, KEY_SONY_PRIME, KEY_SONY_YOUTUBE, KEY_SONY_CRUNCHYROLL}
-            : RemoteKeys.STEM_NETFLIX ? new int[] {KEY_STEM_NETFLIX}
-            : RemoteKeys.KTC ? new int[] {KEY_KTC_TABII}
-            : new int[] {KEY_NETFLIX, KEY_YOUTUBE, KEY_PRIME, KEY_TCL_CHANNEL};
-
     /** Bumped by every change: screens compare it to know when to redraw. */
     static volatile int version;
 
@@ -48,32 +21,6 @@ final class Prefs {
 
     static void init(Context c) {
         app = c.getApplicationContext();
-        if (unlocked()) {
-            onUnlocked();
-            return;
-        }
-        // Direct boot: :keys can start before the user's storage is unlocked, and SharedPreferences throw until then
-        // (keyApp copes: no file, every key opens its default). The rest waits for the unlock.
-        app.registerReceiver(new BroadcastReceiver() {
-            @Override public void onReceive(Context ctx, Intent i) {
-                ctx.unregisterReceiver(this);
-                onUnlocked();
-            }
-        }, new IntentFilter(Intent.ACTION_USER_UNLOCKED));
-        if (unlocked()) onUnlocked();   // unlocked between the check and the receiver
-    }
-
-    private static boolean unlocked() {
-        UserManager um = app.getSystemService(UserManager.class);
-        return um == null || um.isUserUnlocked();
-    }
-
-    private static boolean ready;   // main thread only
-
-    private static void onUnlocked() {
-        if (ready) return;
-        ready = true;
-        migrateKeys();   // before anything reads the button choices
         Ui.applyLanguage();   // the language picked on the TV, now that it can be read
     }
 
@@ -163,85 +110,5 @@ final class Prefs {
         StringBuilder sb = new StringBuilder();
         for (String p : packages) sb.append(sb.length() == 0 ? "" : ",").append(p);
         put("shelf", sb.toString());
-    }
-
-    // MARK: - Remote buttons
-
-    private static String defaultApp(int keyCode) {
-        switch (keyCode) {
-            case KEY_NETFLIX: case KEY_STEM_NETFLIX: return "com.netflix.ninja";
-            case KEY_YOUTUBE: return "com.google.android.youtube.tv";
-            case KEY_PRIME: return "com.amazon.amazonvideo.livingroom";
-            case KEY_TCL_CHANNEL: return "";
-            default: return "";
-        }
-    }
-
-    // The key service runs in its own small process (:keys), so that a busy home screen can never delay the TV's keys.
-    // SharedPreferences are not shared between processes, so these few values live in a tiny file both processes read.
-    // The service asks on every key: the values stay in memory and the file is read again only when it changes.
-    private static File keysFile() {
-        return new File(app.getFilesDir(), "remote-keys.txt");
-    }
-
-    private static final String[] keyApps = new String[KEYS.length];   // null = the default
-    private static long keysStamp = Long.MIN_VALUE;
-
-    /** A temporary file per process (two can start together after an update), synced before it replaces the old one. */
-    private static boolean writeKeys(String text) {
-        File tmp = new File(app.getFilesDir(), "remote-keys." + android.os.Process.myPid() + ".tmp");
-        try (FileOutputStream out = new FileOutputStream(tmp)) {
-            out.write(text.getBytes(StandardCharsets.UTF_8));
-            out.getFD().sync();
-        } catch (IOException e) {
-            //noinspection ResultOfMethodCallIgnored
-            tmp.delete();
-            return false;
-        }
-        return tmp.renameTo(keysFile());
-    }
-
-    /** Choices saved before they moved to the file (in SharedPreferences) are copied there once. */
-    private static void migrateKeys() {
-        if (keysFile().exists()) return;
-        SharedPreferences old = sp();
-        boolean any = false;
-        for (int key : KEYS) any |= old.contains("key" + key);
-        if (!any) return;
-        StringBuilder sb = new StringBuilder();
-        for (int key : KEYS) sb.append(key).append('=').append(old.getString("key" + key, defaultApp(key))).append('\n');
-        writeKeys(sb.toString());
-    }
-
-    /** Package the key opens ("" = nothing). */
-    static String keyApp(int keyCode) {
-        synchronized (keyApps) {
-            File f = keysFile();
-            long stamp = f.lastModified() * 31 + f.length();   // 0 without the file: every key opens its default
-            if (stamp != keysStamp) {
-                keysStamp = stamp;
-                java.util.Arrays.fill(keyApps, null);
-                if (stamp != 0) {
-                    try (BufferedReader r = new BufferedReader(new FileReader(f))) {
-                        String line;
-                        while ((line = r.readLine()) != null) {
-                            for (int i = 0; i < KEYS.length; i++) {
-                                String prefix = KEYS[i] + "=";
-                                if (line.startsWith(prefix)) keyApps[i] = line.substring(prefix.length());
-                            }
-                        }
-                    } catch (IOException ignored) {
-                    }
-                }
-            }
-            for (int i = 0; i < KEYS.length; i++) if (KEYS[i] == keyCode && keyApps[i] != null) return keyApps[i];
-            return defaultApp(keyCode);
-        }
-    }
-
-    static void setKeyApp(int keyCode, String pkg) {
-        StringBuilder sb = new StringBuilder();
-        for (int key : KEYS) sb.append(key).append('=').append(key == keyCode ? pkg : keyApp(key)).append('\n');
-        if (writeKeys(sb.toString())) version++;
     }
 }

@@ -194,7 +194,7 @@ final class Spanish {
             case "Connecting…": return "Conectando…";
             case "Accept “Allow USB debugging?” on the TV (tick “Always allow”).": return "Acepta “¿Permitir depuración USB?” en el TV (marca “Permitir siempre”).";
             case Config.APP_NAME + "'s home screen ran into a problem.\nGoing back to the TV's original home screen…": return "La pantalla de inicio de " + Config.APP_NAME + " tuvo un problema.\nVolviendo a la pantalla original del TV…";
-            // Home Settings, Shelf and Remote Buttons (#15, #16, #17)
+            // Home Settings and Shelf (#15, #16, #17)
             case "Language": return "Idioma";
             case "Temperature": return "Temperatura";
             case "Theme": return "Tema";
@@ -222,27 +222,9 @@ final class Spanish {
             case "Shelf": return "Estante";
             case "on the shelf, place ": return "en el estante, posición ";
             case "not on the shelf": return "fuera del estante";
-            case "Remote Buttons": return "Botones del control";
-            case "Netflix button": return "Botón Netflix";
-            case "YouTube button": return "Botón YouTube";
-            case "Prime Video button": return "Botón Prime Video";
-            case "TCL Channel button": return "Botón TCL Channel";
-            case "Tabii button": return "Botón Tabii";
-            case "Nothing": return "Nada";
-            case "BRAVIA CORE button": return "Botón BRAVIA CORE";
-            case "Disney+ button": return "Botón Disney+";
-            case "Crunchyroll button": return "Botón Crunchyroll";
-            case "Sony default": return "Predeterminado de Sony";
-            case "Sony default: the button opens what it always did.": return "Predeterminado de Sony: el botón abre lo de siempre.";
-            case "Not installed": return "No instalada";
             case ", selected": return ", seleccionado";
             case "OK or the arrows change the value.": return "OK o las flechas cambian el valor.";
             case "OK picks, Back cancels.": return "OK elige, Atrás cancela.";
-            case "Disney and Globoplay: the TV itself controls those buttons.": return "Disney y Globoplay: el propio TV controla esos botones.";
-            case "YouTube, Prime Video and Google Play: the TV itself controls those buttons.": return "YouTube, Prime Video y Google Play: el propio TV controla esos botones.";
-            case "Netflix, YouTube and Prime Video: the TV itself controls those buttons.": return "Netflix, YouTube y Prime Video: el propio TV controla esos botones.";
-            case "The other buttons: the TV itself controls them.": return "Los demás botones: el propio TV los controla.";
-            case "TCL remote buttons: on this TV they work as always.": return "Botones del control de TCL: en este TV funcionan como siempre.";
             default:
                 if (english.startsWith(Config.APP_NAME + " is on: new home screen and screensaver, ")) {
                     return Config.APP_NAME + " está activo: nueva pantalla de inicio y protector, "

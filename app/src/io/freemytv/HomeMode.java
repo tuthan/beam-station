@@ -191,7 +191,6 @@ final class HomeMode {
 
     /** After the TV boots (and after a TV update): wait for the system to settle and check our mode. */
     static void bootCheck(Context c) {
-        ensureRemoteService(c, 30_000);
         ModeJob.schedule(c, ModeJob.VERIFY, null, 45_000);
     }
 
@@ -200,34 +199,26 @@ final class HomeMode {
         ModeJob.schedule(c, ModeJob.VERIFY, null, 0);
     }
 
-    /**
-     * The remote's app buttons (RemoteKeys) need an accessibility service that only filters those keys. It is on only
-     * on TCL, Vestel, KTC and Sony TVs (and Formovie projectors) in our mode, and goes off with Original. Android turns it off when this app is updated, so the
-     * boot check and an update turn it back on.
-     */
-    static void ensureRemoteService(Context c, long delayMs) {
-        if (RemoteKeys.supported()) ModeJob.schedule(c, ModeJob.REMOTE, null, delayMs);
-    }
-
-    static void ensureRemoteServiceNow(Context app) {
-        if (!RemoteKeys.supported() || !FREE.equals(state(app).optString("mode"))) return;
-        try (Adb adb = Adb.connect(app, 10_000, null)) {
-            remoteService(app, adb, true);
-        } catch (IOException e) {
-            AppLog.w("remote buttons service: " + e.getMessage());
-        }
-    }
-
-    private static final String REMOTE_SERVICE = PKG + "/" + PKG + ".RemoteKeyService";
+    /** The remote buttons' accessibility service of older builds (other brands' TVs), long or short form. */
+    private static final Set<String> OLD_REMOTE_SERVICE = new HashSet<>(Arrays.asList(
+            PKG + "/" + PKG + ".RemoteKeyService", PKG + "/.RemoteKeyService"));
     private static final Pattern SERVICE = Pattern.compile("[\\w.]+/[\\w.$]+");
 
-    /** Adds ours to the enabled accessibility services (keeping the others, like TalkBack), or takes it out. */
-    private static void remoteService(Context c, Adb adb, boolean on) throws IOException {
+    /**
+     * Original takes an older build's remote buttons service out of the enabled accessibility services, if it is still
+     * listed, keeping the others (like TalkBack); accessibility goes back off if that build found it off.
+     */
+    private static void dropOldRemoteService(Context c, Adb adb) throws IOException {
         String current = adb.shell("settings get secure enabled_accessibility_services").trim();
         if (current.equals("null")) current = "";
         List<String> others = new ArrayList<>();
+        boolean listed = false;
         for (String one : current.split(":")) {
-            if (one.isEmpty() || one.equals(REMOTE_SERVICE)) continue;
+            if (one.isEmpty()) continue;
+            if (OLD_REMOTE_SERVICE.contains(one)) {
+                listed = true;
+                continue;
+            }
             // Only plain component names go back into the shell command; anything else is left alone.
             if (!SERVICE.matcher(one).matches()) {
                 AppLog.w("accessibility services left as they are: unexpected entry");
@@ -235,27 +226,11 @@ final class HomeMode {
             }
             others.add(one);
         }
-        if (on == current.contains(REMOTE_SERVICE)) {
-            // Some TCL builds reset the switch and keep the list: listed, but not running.
-            if (on && !"1".equals(adb.shell("settings get secure accessibility_enabled").trim())) {
-                adb.shell("settings put secure accessibility_enabled 1");
-                AppLog.w("remote buttons service: accessibility was off, turned it on");
-            }
-            return;
-        }
-        List<String> list = new ArrayList<>(others);
-        if (on) {
-            JSONObject s = state(c);
-            try { s.put("accessibilityWasOff", !"1".equals(adb.shell("settings get secure accessibility_enabled").trim())); }
-            catch (JSONException ignored) {}
-            save(c, s);
-            list.add(REMOTE_SERVICE);
-        }
-        adb.shell(list.isEmpty() ? "settings delete secure enabled_accessibility_services"
-                : "settings put secure enabled_accessibility_services '" + String.join(":", list) + "'");
-        if (on) adb.shell("settings put secure accessibility_enabled 1");
-        else if (list.isEmpty() && state(c).optBoolean("accessibilityWasOff")) adb.shell("settings put secure accessibility_enabled 0");
-        AppLog.w("remote buttons service " + (on ? "on" : "off"));
+        if (!listed) return;
+        adb.shell(others.isEmpty() ? "settings delete secure enabled_accessibility_services"
+                : "settings put secure enabled_accessibility_services '" + String.join(":", others) + "'");
+        if (others.isEmpty() && state(c).optBoolean("accessibilityWasOff")) adb.shell("settings put secure accessibility_enabled 0");
+        AppLog.w("old remote buttons service taken out");
     }
 
     // MARK: - Switches (main process, from ModeJob)
@@ -354,13 +329,6 @@ final class HomeMode {
             s.put("mode", FREE).put("since", System.currentTimeMillis()).put("homeReverted", false)
                     .put("disabled", new JSONArray(sorted(disabled))).put("setupHome", setupHome);
             save(c, s);
-            if (RemoteKeys.supported()) {
-                try {
-                    remoteService(c, adb, true);
-                } catch (IOException e) {
-                    AppLog.w("remote buttons service: " + e.getMessage());
-                }
-            }
             notice(c, Ui.tr(Config.APP_NAME + " ligado: Início e tela de descanso novos, " + disabled.size() + " apps desligados.",
                     Config.APP_NAME + " is on: new home screen and screensaver, " + disabled.size() + " apps turned off."));
             busy(c, Ui.tr("Medindo o " + Config.APP_NAME + "…", "Measuring " + Config.APP_NAME + "…"));
@@ -402,9 +370,9 @@ final class HomeMode {
             if (ROKID) rokidGrants(adb, false);
             restoreScreensaver(adb, s);
             try {
-                remoteService(c, adb, false);
+                dropOldRemoteService(c, adb);
             } catch (IOException e) {
-                AppLog.w("remote buttons service: " + e.getMessage());
+                AppLog.w("old remote buttons service: " + e.getMessage());
             }
             s = state(c);
             s.put("mode", ORIGINAL).put("since", System.currentTimeMillis()).put("homeReverted", false)

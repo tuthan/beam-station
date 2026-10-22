@@ -40,7 +40,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Locale;
 import java.util.Set;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -127,14 +126,14 @@ public class SettingsActivity extends Activity {
     }
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
-        private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5,
-                WIFI = 6, WIFI_FORGET = 7, BT = 8, BT_DEVICE = 9, PICTURE = 10, GLASSES = 11, POWER = 12;
+        private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, PICKER = 3, SHELF_EDIT = 4,
+                WIFI = 5, WIFI_FORGET = 6, BT = 7, BT_DEVICE = 8, PICTURE = 9, GLASSES = 10, POWER = 11;
         /**
-         * The main screen's rows (Remote Buttons, TV Settings, Wi-Fi, Bluetooth, Picture, Time Zone, Glasses, Power), shown
-         * in the order of mainRows().
+         * The main screen's rows (TV Settings, Wi-Fi, Bluetooth, Picture, Time Zone, Glasses, Power), shown in the order of
+         * mainRows().
          */
-        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6, BT_ROW = 7, PICTURE_ROW = 8, ZONE_ROW = 9,
-                GLASSES_ROW = 10, POWER_ROW = 11;
+        private static final int TV_ROW = 4, WIFI_ROW = 5, BT_ROW = 6, PICTURE_ROW = 7, ZONE_ROW = 8, GLASSES_ROW = 9,
+                POWER_ROW = 10;
         private static final String[] WIFI_BARS = {"wifi_1", "wifi_1", "wifi_2", "wifi_3", "wifi_4"};
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
@@ -145,13 +144,12 @@ public class SettingsActivity extends Activity {
         private final Scene scene = new Scene();
         private final Handler handler = new Handler(Looper.getMainLooper());
         private final Spring[] pop = new Spring[12];
-        private final List<String> appPkgs = new ArrayList<>(), appLabels = new ArrayList<>();
-        // The list picker (the app of a remote button): what it shows, which one is in use, where we are.
+        // The list picker (a city or a time zone): what it shows, which one is in use, where we are.
         private final List<String> pickLabels = new ArrayList<>();
         // The shelf editor: the apps it can hold (selected ones first, in order) and the selection.
         private final List<String[]> shelfRows = new ArrayList<>();
         private final List<String> shelfOrder = new ArrayList<>();
-        private int pickFor, pickCurrent, pickScroll;   // pickFor: the remote button (index + 1)
+        private int pickFor, pickCurrent, pickScroll;   // pickFor: PICK_CITY or PICK_ZONE
         private static final int PICK_CITY = 0, PICK_ZONE = -1;
         // Time Zone (XGIMI projectors): the zones the picker lists (the city's first), and the one being set.
         private final List<String> zones = new ArrayList<>();
@@ -320,7 +318,7 @@ public class SettingsActivity extends Activity {
                     if (mainRow(row) == GLASSES_ROW) return Ui.tr("Óculos", "Glasses") + (glassesSummary().isEmpty() ? "" : ", " + glassesSummary());
                     if (mainRow(row) == POWER_ROW) return Ui.tr("Energia", "Power") + (powerSummary().isEmpty() ? "" : ", " + powerSummary());
                     String[] names = {Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview"), Ui.tr("Ajustes do Início", "Home Settings"),
-                            Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings")};
+                            Ui.tr("Prateleira", "Shelf"), Ui.tr("Ajustes da TV", "TV Settings")};
                     int at = mainRow(row) - 1;
                     return at < names.length ? names[at] : "";
                 }
@@ -355,7 +353,6 @@ public class SettingsActivity extends Activity {
                     return name + (inUse ? Ui.tr(". Em uso", ". In use") : "") + ", " + (row + 1) + Ui.tr(" de 2", " of 2");
                 }
                 case HOME_SETTINGS:
-                case REMOTE_KEYS:
                 case PICTURE:
                 case GLASSES:
                 case POWER: {
@@ -477,13 +474,11 @@ public class SettingsActivity extends Activity {
         }
 
         /**
-         * Remote Buttons only where the remote's buttons can be reached; Picture and Time Zone on XGIMI projectors; Wi-Fi
-         * and Bluetooth on XGIMI projectors and the Rokid Station; Glasses while Rokid glasses are plugged in; Power on the
-         * Rokid Station; all before TV Settings.
+         * Picture and Time Zone on XGIMI projectors; Wi-Fi and Bluetooth on XGIMI projectors and the Rokid Station; Glasses
+         * while Rokid glasses are plugged in; Power on the Rokid Station; all before TV Settings.
          */
         private static int[] mainRows(boolean glasses) {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
-            if (RemoteKeys.supported()) rows.add(REMOTE_ROW);
             if (Picture.available()) rows.add(PICTURE_ROW);
             if (Wifi.available()) rows.add(WIFI_ROW);
             if (Bluetooth.available()) rows.add(BT_ROW);
@@ -530,7 +525,7 @@ public class SettingsActivity extends Activity {
                 case POWER: return listLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
-                default: return Prefs.KEYS.length;
+                default: return 0;
             }
         }
 
@@ -569,9 +564,9 @@ public class SettingsActivity extends Activity {
             String mode = freeActive() ? Config.APP_NAME : Ui.tr("Original", "Original");
             String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Tela de Descanso", "Screensaver"),
                     Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Prateleira", "Shelf"),
-                    Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi"), "Bluetooth",
+                    Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi"), "Bluetooth",
                     Ui.tr("Imagem", "Picture"), Ui.tr("Fuso Horário", "Time Zone"), Ui.tr("Óculos", "Glasses"), Ui.tr("Energia", "Power")};
-            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", Wifi.available() ? wifiSummary() : "", btSummary(),
+            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", Wifi.available() ? wifiSummary() : "", btSummary(),
                     pictureSummary(), HomeMode.XGIMI ? zoneSummary() : "", glassesSummary(), powerSummary()};
             for (int i = 0; i < rowCount(); i++) {
                 int row = mainRow(i);
@@ -801,8 +796,7 @@ public class SettingsActivity extends Activity {
                     if (down && screen == SHELF_EDIT) {
                         moveShelfApp(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
-                    } else if (down && (screen == HOME_SETTINGS || screen == REMOTE_KEYS || screen == PICTURE || screen == GLASSES
-                            || screen == POWER)) {
+                    } else if (down && (screen == HOME_SETTINGS || screen == PICTURE || screen == GLASSES || screen == POWER)) {
                         adjust(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
                     }
@@ -829,9 +823,6 @@ public class SettingsActivity extends Activity {
                             } else if (screen == PICKER && pickFor == PICK_ZONE) {
                                 focus = mainIndex(ZONE_ROW);
                                 screen = MAIN;
-                            } else if (screen == PICKER) {
-                                focus = pickFor - 1;
-                                screen = REMOTE_KEYS;
                             } else if (screen == WIFI_FORGET) {
                                 screen = WIFI;
                                 keepWifiFocus(wifiPicked.ssid);
@@ -840,9 +831,9 @@ public class SettingsActivity extends Activity {
                                 keepBtFocus(btPicked.address);
                             } else {
                                 if (screen == BT) closeBt();
-                                focus = mainIndex(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3 : screen == REMOTE_KEYS ? REMOTE_ROW
-                                        : screen == WIFI ? WIFI_ROW : screen == BT ? BT_ROW : screen == PICTURE ? PICTURE_ROW
-                                        : screen == GLASSES ? GLASSES_ROW : screen == POWER ? POWER_ROW : 0);
+                                focus = mainIndex(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3 : screen == WIFI ? WIFI_ROW
+                                        : screen == BT ? BT_ROW : screen == PICTURE ? PICTURE_ROW : screen == GLASSES ? GLASSES_ROW
+                                        : screen == POWER ? POWER_ROW : 0);
                                 screen = MAIN;
                             }
                         }
@@ -856,7 +847,7 @@ public class SettingsActivity extends Activity {
             }
         }
 
-        // MARK: - Home Settings and Remote Buttons
+        // MARK: - Home Settings
 
         private static final String[] LANGUAGES = {"auto", "pt", "en", "es", "de", "ru"}, UNITS = {"auto", "C", "F"}, THEMES = {"auto", "light", "dark"};
         /** Home Settings: language, temperature, theme, sounds, weather, city, quotes, then one row per coin. */
@@ -905,53 +896,15 @@ public class SettingsActivity extends Activity {
             return on ? Ui.tr("Ligado", "On") : Ui.tr("Desligado", "Off");
         }
 
-        private String[] keyLabels() {
-            if (RemoteKeys.STEM_NETFLIX) return new String[] {Ui.tr("Botão Netflix", "Netflix button")};
-            if (RemoteKeys.KTC) return new String[] {Ui.tr("Botão Tabii", "Tabii button")};
-            if (RemoteKeys.SONY) return new String[] {Ui.tr("Botão BRAVIA CORE", "BRAVIA CORE button"),
-                    Ui.tr("Botão Netflix", "Netflix button"), Ui.tr("Botão Disney+", "Disney+ button"),
-                    Ui.tr("Botão Prime Video", "Prime Video button"), Ui.tr("Botão YouTube", "YouTube button"),
-                    Ui.tr("Botão Crunchyroll", "Crunchyroll button")};
-            return new String[] {Ui.tr("Botão Netflix", "Netflix button"), Ui.tr("Botão YouTube", "YouTube button"),
-                    Ui.tr("Botão Prime Video", "Prime Video button"), Ui.tr("Botão TCL Channel", "TCL Channel button")};
-        }
-
-        private String[] keyValues() {
-            String[] v = new String[Prefs.KEYS.length];
-            for (int i = 0; i < v.length; i++) {
-                int at = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[i]));
-                v[i] = at >= 0 ? appLabels.get(at) : Ui.tr("Não instalado", "Not installed");
-            }
-            return v;
-        }
-
-        /** The rows of the list screens: Home Settings, Remote Buttons, Picture, Glasses, Power. */
+        /** The rows of the list screens: Home Settings, Picture, Glasses, Power. */
         private String[] listLabels() {
-            return screen == REMOTE_KEYS ? keyLabels() : screen == PICTURE ? pictureLabels() : screen == GLASSES ? glassesLabels()
-                    : screen == POWER ? powerLabels() : settingLabels();
+            return screen == PICTURE ? pictureLabels() : screen == GLASSES ? glassesLabels() : screen == POWER ? powerLabels()
+                    : settingLabels();
         }
 
         private String[] listValues() {
-            return screen == REMOTE_KEYS ? keyValues() : screen == PICTURE ? pictureValues() : screen == GLASSES ? glassesValues()
-                    : screen == POWER ? powerValues() : settingValues();
-        }
-
-        /** Installed TV apps, by name, after "Nothing": what a remote button can open. */
-        private void loadApps() {
-            List<String[]> found = new ArrayList<>();
-            for (String[] app : HomeApps.launchable(getContext())) {
-                if (!app[0].equals(getContext().getPackageName())) found.add(app);
-            }
-            Collections.sort(found, (a, b) -> a[1].toLowerCase(Locale.ROOT).compareTo(b[1].toLowerCase(Locale.ROOT)));
-            appPkgs.clear();
-            appLabels.clear();
-            appPkgs.add("");
-            // On Sony, "nothing" leaves the key to the TV, which opens its usual app.
-            appLabels.add(RemoteKeys.SONY ? Ui.tr("Padrão da Sony", "Sony default") : Ui.tr("Nada", "Nothing"));
-            for (String[] f : found) {
-                appPkgs.add(f[0]);
-                appLabels.add(f[1]);
-            }
+            return screen == PICTURE ? pictureValues() : screen == GLASSES ? glassesValues() : screen == POWER ? powerValues()
+                    : settingValues();
         }
 
         /** Changes the focused row's value one step (OK and → go forward, ← goes back). */
@@ -966,13 +919,6 @@ public class SettingsActivity extends Activity {
             }
             if (screen == POWER) {
                 adjustPower(dir);
-                return;
-            }
-            if (screen == REMOTE_KEYS) {
-                int n = appPkgs.size();
-                int at = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[focus]));
-                int next = at < 0 ? (dir > 0 ? 0 : n - 1) : (at + dir + n) % n;
-                Prefs.setKeyApp(Prefs.KEYS[focus], appPkgs.get(next));
                 return;
             }
             switch (focus) {
@@ -2077,9 +2023,6 @@ public class SettingsActivity extends Activity {
                 if (cityZone != null) pickLabels.set(0, pickLabels.get(0) + "  ·  " + Ui.tr("sua cidade", "your city"));
                 pickCurrent = zones.indexOf(now);
                 if (cityZone != null && !cityZone.equals(now)) start = 0;   // the city's zone, first, is what they likely want
-            } else {
-                pickLabels.addAll(appLabels);
-                pickCurrent = appPkgs.indexOf(Prefs.keyApp(Prefs.KEYS[which - 1]));
             }
             int visible = Math.min(PICK_VISIBLE, pickLabels.size());
             int at = start >= 0 ? start : Math.max(0, pickCurrent);
@@ -2088,11 +2031,10 @@ public class SettingsActivity extends Activity {
             screen = PICKER;
         }
 
-        /** A long list (the apps): nine rows at a time, the one in use checked. */
+        /** A long list (cities, time zones): nine rows at a time, the one in use checked. */
         private void drawPicker(Canvas c) {
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            String title = pickFor == PICK_CITY ? Ui.tr("Cidade", "City") : pickFor == PICK_ZONE ? Ui.tr("Fuso Horário", "Time Zone")
-                    : keyLabels()[pickFor - 1];
+            String title = pickFor == PICK_CITY ? Ui.tr("Cidade", "City") : Ui.tr("Fuso Horário", "Time Zone");
             c.drawText(title, LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             int rows = rowCount();
             for (int i = 0; i < rows; i++) {
@@ -2114,12 +2056,12 @@ public class SettingsActivity extends Activity {
         }
 
         private void drawList(Canvas c) {
-            boolean keys = screen == REMOTE_KEYS, pic = screen == PICTURE, eyes = screen == GLASSES, power = screen == POWER;
+            boolean pic = screen == PICTURE, eyes = screen == GLASSES, power = screen == POWER;
             String[] labels = listLabels();
             String[] values = listValues();
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            c.drawText(keys ? Ui.tr("Botões do Controle", "Remote Buttons") : pic ? Ui.tr("Imagem", "Picture")
-                    : eyes ? Ui.tr("Óculos", "Glasses") : power ? Ui.tr("Energia", "Power") : Ui.tr("Ajustes do Início", "Home Settings"),
+            c.drawText(pic ? Ui.tr("Imagem", "Picture") : eyes ? Ui.tr("Óculos", "Glasses") : power ? Ui.tr("Energia", "Power")
+                    : Ui.tr("Ajustes do Início", "Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
@@ -2143,18 +2085,6 @@ public class SettingsActivity extends Activity {
                         ? Ui.tr("Na tomada, a tela de descanso não começa.", "While plugged in, the screensaver doesn't start.") : "";
                 c.drawText(TextUtils.ellipsize(line, new TextPaint(hint), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(),
                         LIST_X * k + 30 * k, hy + 38 * k, hint);
-            } else if (keys) {
-                c.drawText(RemoteKeys.VESTEL ? Ui.tr("YouTube, Prime Video e Google Play: a própria TV controla esses botões.",
-                        "YouTube, Prime Video and Google Play: the TV itself controls those buttons.")
-                        : RemoteKeys.KTC ? Ui.tr("Netflix, YouTube e Prime Video: a própria TV controla esses botões.",
-                        "Netflix, YouTube and Prime Video: the TV itself controls those buttons.")
-                        : RemoteKeys.SONY ? Ui.tr("Padrão da Sony: o botão abre o mesmo app de sempre.",
-                        "Sony default: the button opens what it always did.")
-                        : RemoteKeys.FORMOVIE ? Ui.tr("Os outros botões: a própria TV os controla.", "The other buttons: the TV itself controls them.")
-                        : RemoteKeys.supported() ? Ui.tr("Disney e Globoplay: a própria TV controla esses botões.",
-                        "Disney and Globoplay: the TV itself controls those buttons.")
-                        : Ui.tr("Botões do controle da TCL: nesta TV funcionam como sempre.",
-                        "TCL remote buttons: on this TV they work as always."), LIST_X * k + 30 * k, hy + 38 * k, hint);
             }
         }
 
@@ -2221,17 +2151,10 @@ public class SettingsActivity extends Activity {
                 HomeData.get(c).settingsChanged();
                 focus = CITY_ROW;
                 screen = HOME_SETTINGS;
-            } else if (screen == PICKER) {
-                int at = pickScroll + focus;
-                Prefs.setKeyApp(Prefs.KEYS[pickFor - 1], appPkgs.get(at));
-                focus = pickFor - 1;
-                screen = REMOTE_KEYS;
             } else if (screen == SHELF_EDIT) {
                 toggleShelfApp();
                 invalidate();
                 return;
-            } else if (screen == REMOTE_KEYS) {
-                openPicker(focus + 1);
             } else if (screen == HOME_SETTINGS && focus == CITY_ROW) {
                 askCity();
                 return;
@@ -2251,11 +2174,6 @@ public class SettingsActivity extends Activity {
                 focus = 0;
             } else if (mainRow(focus) == 3) {
                 openShelfEditor();
-            } else if (mainRow(focus) == REMOTE_ROW) {
-                HomeMode.ensureRemoteService(c, 0);   // the buttons work from inside other apps through this service
-                loadApps();
-                screen = REMOTE_KEYS;
-                focus = 0;
             } else if (mainRow(focus) == WIFI_ROW) {
                 openWifi();
             } else if (mainRow(focus) == BT_ROW) {
