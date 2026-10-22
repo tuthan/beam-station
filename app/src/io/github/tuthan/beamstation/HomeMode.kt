@@ -272,10 +272,8 @@ internal object HomeMode {
                 val homeOk = restoreHome(adb, home)
                 restoreScreensaver(adb, s)
                 s = state(c)
-                // The permissions go back after the job (revokeGrants): taking location back ends the app's processes,
-                // and a switch cut off there ran again from the start (on the Rokid, without the home screen).
                 s.put("mode", ORIGINAL).put("since", System.currentTimeMillis()).put("homeReverted", false)
-                        .put("disabled", JSONArray(failed)).put("revokeGrants", XGIMI || ROKID).remove("keptOff")
+                        .put("disabled", JSONArray(failed)).remove("keptOff")
                 save(c, s)
                 if (failed.isEmpty() && homeOk) {
                     notice(c, Ui.tr("Modo original: Início, tela de descanso e apps de fábrica de volta.",
@@ -291,6 +289,10 @@ internal object HomeMode {
                 done(c, null)
                 adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME")
                 ModeJob.schedule(c, ModeJob.MEMORY, ORIGINAL, 120_000)
+                // Last, the permissions our mode gave go back. Taking location back ends the app's processes: done in
+                // the middle, it cut the switch off, and the job ran again (on the Rokid, without the home screen).
+                if (XGIMI) xgimiGrants(adb, false)
+                if (ROKID) rokidGrants(adb, false)
             }
         } catch (e: Exception) {
             done(c, Ui.tr("Não deu para voltar ao original: ", "Couldn't go back to the original: ") +
@@ -309,7 +311,7 @@ internal object HomeMode {
             adb.shell("appops set " + PKG + " WRITE_SETTINGS " + (if (on) "allow" else "default"))
             adb.shell("appops write-settings")   // app-ops reach the disk lazily: a restart soon after would drop the set
             adb.shell(pm + "CHANGE_CONFIGURATION")
-            adb.shell(pm + "ACCESS_FINE_LOCATION")   // last: taking it back ends the app's processes
+            location(adb, on)
         } catch (e: IOException) {
             AppLog.w("XGIMI permissions: " + e.message)
         }
@@ -358,32 +360,19 @@ internal object HomeMode {
     }
 
     /**
-     * After an Original switch, once its job is over (ModeJob): the permissions our mode gave the app go back. Taking
-     * location back ends the app's processes, so the mark is cleared first and nothing runs after it.
+     * Location for this app: granted at once, or taken back by a shell outside the app 3 s later, when the switch's job
+     * is over. Taking it back ends the app's processes (and XGIMI stops a finished job's process soon after anyway).
+     * adbd kills the command's process group when the command ends: setsid moves the shell out of it first.
      */
-    @JvmStatic
-    fun revokeGrants(app: Context) {
-        synchronized(RUN) {
-            val s = state(app)
-            if (!s.optBoolean("revokeGrants")) return
-            s.remove("revokeGrants")
-            save(app, s)
-            if (ORIGINAL != s.optString("mode")) return   // switched on again meanwhile: the app keeps them
-            try {
-                Adb.connect(app, 10_000, null).use { adb ->
-                    if (XGIMI) xgimiGrants(adb, false)
-                    if (ROKID) rokidGrants(adb, false)
-                }
-            } catch (e: IOException) {
-                AppLog.w("permissions: " + e.message)
-            }
-        }
+    private fun location(adb: Adb, on: Boolean) {
+        val cmd = "pm " + (if (on) "grant " else "revoke ") + PKG + " android.permission.ACCESS_FINE_LOCATION"
+        adb.shell(if (on) cmd else "setsid sh -c 'sleep 3; $cmd' </dev/null >/dev/null 2>&1 & sleep 0.5")
     }
 
     /** Rokid Station: lets this app search for Bluetooth devices (Android 10+ ties that to location, never read here), or takes that back. */
     private fun rokidGrants(adb: Adb, on: Boolean) {
         try {
-            adb.shell("pm " + (if (on) "grant " else "revoke ") + PKG + " android.permission.ACCESS_FINE_LOCATION")
+            location(adb, on)
         } catch (e: IOException) {
             AppLog.w("Rokid permissions: " + e.message)
         }

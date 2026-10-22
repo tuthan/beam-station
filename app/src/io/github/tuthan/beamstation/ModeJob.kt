@@ -31,15 +31,6 @@ class ModeJob : JobService() {
                 AppLog.w("job $action failed: $t")
             }
             jobFinished(params, false)
-            // With the job over: Original's permissions go back now, since that ends the app's processes (a job cut
-            // off while running would run again).
-            if (action == APPLY) {
-                try {
-                    HomeMode.revokeGrants(app)
-                } catch (t: Throwable) {
-                    AppLog.w("permissions failed: $t")
-                }
-            }
         }, "beam-station-$action").start()
         return true
     }
