@@ -242,6 +242,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             KeyFilter.Action.AR_MENU -> togglePanel()
             KeyFilter.Action.RECENTRE -> recentre()
             KeyFilter.Action.SCREEN_MENU -> openScreenMenu()
+            KeyFilter.Action.LEAVE -> leave()
         }
     }
 

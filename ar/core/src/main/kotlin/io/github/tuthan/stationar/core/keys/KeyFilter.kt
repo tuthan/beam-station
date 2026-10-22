@@ -2,7 +2,8 @@ package io.github.tuthan.stationar.core.keys
 
 /**
  * Which of the remote's keys Station AR keeps while an app in AR has the remote (the focus is on an app's screen).
- * Menu always opens AR's panel. OK and Back are held back until they're released, or held for [longMs]: held OK
+ * Menu always opens AR's panel. Home leaves AR (left to Android, it would look for a home screen on the app's display,
+ * which can't have one, and do nothing). OK and Back are held back until they're released, or held for [longMs]: held OK
  * re-centres, held Back opens the screen's menu, and a short press is sent on to the app as a whole press.
  * Everything else (the D-pad, with its auto-repeat; media keys) goes straight to the app.
  *
@@ -10,7 +11,7 @@ package io.github.tuthan.stationar.core.keys
  * has the remote ([live] false), every key passes. Pure state: the caller supplies times and runs the actions.
  */
 class KeyFilter(private val longMs: Long = 500) {
-    enum class Action { RECENTRE, SCREEN_MENU, AR_MENU }
+    enum class Action { RECENTRE, SCREEN_MENU, AR_MENU, LEAVE }
 
     /** What to do with one key event. */
     class Result(
@@ -39,6 +40,7 @@ class KeyFilter(private val longMs: Long = 500) {
         if (!live || injected) return PASS
         when (code) {
             MENU -> return if (down && repeat == 0) Result(true, Action.AR_MENU) else CONSUME
+            HOME -> return if (!down) Result(true, Action.LEAVE) else CONSUME
             OK, ENTER, BACK -> {
                 if (down) {
                     // Another of them while one is held back: it goes to the app as it is (down and up), so the held
@@ -77,6 +79,7 @@ class KeyFilter(private val longMs: Long = 500) {
 
     companion object {
         // android.view.KeyEvent's codes (no Android here).
+        const val HOME = 3
         const val BACK = 4
         const val OK = 23
         const val ENTER = 66

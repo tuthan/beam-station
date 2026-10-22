@@ -1,6 +1,7 @@
 package io.github.tuthan.stationar.core.keys
 
 import io.github.tuthan.stationar.core.keys.KeyFilter.Companion.BACK
+import io.github.tuthan.stationar.core.keys.KeyFilter.Companion.HOME
 import io.github.tuthan.stationar.core.keys.KeyFilter.Companion.MENU
 import io.github.tuthan.stationar.core.keys.KeyFilter.Companion.OK
 import kotlin.test.Test
@@ -98,6 +99,18 @@ class KeyFilterTest {
         f.live = true
         assertNull(f.onTimeout(600).action)
         assertFalse(f.onKey(OK, false, 0, 700, false).consume)
+    }
+
+    @Test
+    fun homeLeavesArWhenAnAppHasTheRemote() {
+        val f = KeyFilter().apply { live = true }
+        val down = f.onKey(HOME, true, 0, 0, false)
+        assertTrue(down.consume)
+        assertNull(down.action)
+        val up = f.onKey(HOME, false, 0, 80, false)
+        assertTrue(up.consume)
+        assertEquals(KeyFilter.Action.LEAVE, up.action)
+        assertFalse(KeyFilter().onKey(HOME, true, 0, 0, false).consume)
     }
 
     @Test
