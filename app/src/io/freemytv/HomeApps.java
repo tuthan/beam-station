@@ -366,6 +366,17 @@ final class HomeApps {
         return it;
     }
 
+    /** The TV's own settings: one place for the settings row and the home shortcut, so a device can open its own. */
+    static boolean openTvSettings(Context c) {
+        try {
+            c.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+            return true;
+        } catch (ActivityNotFoundException | SecurityException e) {
+            AppLog.w("couldn't open the TV's settings: " + e.getMessage());
+            return false;
+        }
+    }
+
     /** Opens the item with the system zoom transition growing out of the card (the app starts opening right away). */
     static boolean open(Activity a, Item it, View from, int x, int y, int w, int h) {
         Intent intent, plain = null;   // plain: the app's own home, when it won't take the title's address
