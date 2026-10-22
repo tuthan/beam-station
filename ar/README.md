@@ -20,6 +20,10 @@ glasses back as they were, in 2D.
 | D-pad | In the panel: moves. Otherwise left and right nudge the screen you look at by 5°. Without glasses: turns the view |
 | Back | Closes the panel, or leaves AR |
 
+**Laptop monitors:** with AR open, run `sender/linux/station-ar-send pair <Station address>` once on the laptop
+(check the key, type the PIN the glasses show), then `station-ar-send run`. Each monitor appears as a screen; see
+`sender/README.md`.
+
 The first time AR sees the glasses' sensors, it asks you to look straight ahead and then up, to learn which way
 the glasses' sensor faces (*Calibrate* in the panel redoes it).
 

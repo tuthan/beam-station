@@ -1,0 +1,558 @@
+#!/usr/bin/env python3
+"""station-ar-send: your laptop's extra monitors, streamed to Station AR on the Rokid Station.
+
+  station-ar-send pair [HOST]          pair this laptop once (type the PIN shown in the glasses)
+  station-ar-send run [HOST] [options] stream: one or two monitors, or one wide one
+  station-ar-send discover             find Stations with AR open on the LAN (mDNS)
+  station-ar-send forget [HOST|all]    forget a pairing
+
+The protocol is in ar/docs/protocol.md. Python 3 standard library only; the picture comes from ffmpeg (the test
+source and files) or wf-recorder (real monitors: Hyprland headless outputs), which this script never installs.
+"""
+
+import argparse
+import hashlib
+import json
+import os
+import re
+import shutil
+import signal
+import socket
+import ssl
+import struct
+import subprocess
+import sys
+import threading
+import time
+from datetime import datetime, timezone
+
+PORT = 47800
+VERSION = 1
+CONFIG = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "station-ar")
+HOSTS = os.path.join(CONFIG, "hosts")
+SERVICE = "_stationar._tcp.local."
+DEVICE = "/dev/dri/renderD128"
+MAX_LINE = 256
+
+stopping = threading.Event()
+
+
+def log(msg):
+    print(f"{datetime.now().strftime('%H:%M:%S')} {msg}", file=sys.stderr, flush=True)
+
+
+# MARK: - Saved pairings: {fingerprint: {host, port, token, name, paired}}, readable only by you.
+
+
+def load_hosts():
+    try:
+        with open(HOSTS) as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else {}
+    except FileNotFoundError:
+        return {}
+
+
+def save_hosts(hosts):
+    os.makedirs(CONFIG, mode=0o700, exist_ok=True)
+    tmp = HOSTS + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    with os.fdopen(fd, "w") as f:
+        json.dump(hosts, f, indent=2)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(tmp, HOSTS)
+
+
+# MARK: - The connection: TLS 1.3, the Station's certificate pinned by its SHA-256.
+
+
+def connect(host, port, timeout=5.0):
+    """A TLS connection and the SHA-256 of the Station's certificate (checked by the caller)."""
+    ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+    ctx.minimum_version = ssl.TLSVersion.TLSv1_3
+    # The certificate is self-signed: it is checked against the pinned fingerprint instead.
+    ctx.check_hostname = False
+    ctx.verify_mode = ssl.CERT_NONE
+    raw = socket.create_connection((host, port), timeout=timeout)
+    raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+    if hasattr(socket, "TCP_USER_TIMEOUT"):
+        # Data unacknowledged for 4 s (the Wi-Fi dropped): give up, so we reconnect.
+        raw.setsockopt(socket.IPPROTO_TCP, socket.TCP_USER_TIMEOUT, 4000)
+    s = ctx.wrap_socket(raw)
+    der = s.getpeercert(binary_form=True)
+    return s, hashlib.sha256(der).hexdigest()
+
+
+def send_line(s, line):
+    s.sendall((line + "\n").encode("ascii"))
+
+
+def read_line(s):
+    out = bytearray()
+    while True:
+        b = s.recv(1)
+        if not b:
+            raise ConnectionError("the Station closed the connection")
+        if b == b"\n":
+            return out.decode("ascii").rstrip("\r")
+        out += b
+        if len(out) > MAX_LINE:
+            raise ConnectionError("the Station sent a line too long")
+
+
+def short(fp):
+    return fp[:8].upper()
+
+
+def laptop_name():
+    name = re.sub(r"[^A-Za-z0-9 ._-]", "-", socket.gethostname())[:40]
+    return name or "laptop"
+
+
+# MARK: - pair
+
+
+def cmd_pair(args):
+    host = args.host or pick_host(args, need_paired=False)
+    s, fp = connect(host, args.port)
+    with s:
+        hosts = load_hosts()
+        known = [k for k, v in hosts.items() if v.get("host") == host]
+        if known and fp not in known:
+            print(f"Warning: {host} had key {short(known[0])} when you paired; it now shows {short(fp)}.\n"
+                  "Pairing again replaces it. If you didn't reset Station AR, stop here.", file=sys.stderr)
+        name = args.name or laptop_name()
+        send_line(s, f"STATIONAR {VERSION} PAIR {name}")
+        s.settimeout(130)
+        reply = read_line(s)
+        if reply != "PIN":
+            return refused(reply)
+        print(f"The glasses show a PIN for \"{name}\" and a key: check the key reads {short(fp)}.")
+        pin = input("PIN: ").strip()
+        send_line(s, f"PIN {pin}")
+        reply = read_line(s)
+        if not reply.startswith("TOKEN "):
+            return refused(reply)
+        token = reply[6:]
+        for k in known:
+            hosts.pop(k, None)
+        hosts[fp] = {"host": host, "port": args.port, "token": token, "name": name,
+                     "paired": datetime.now(timezone.utc).isoformat(timespec="seconds")}
+        save_hosts(hosts)
+        print(f"Paired with the Station at {host} (key {short(fp)}). Now: station-ar-send run")
+        return 0
+
+
+def refused(reply):
+    why = {
+        "DENIED": "wrong PIN",
+        "BUSY": "the Station is pairing another laptop",
+    }.get(reply)
+    if reply.startswith("LOCKED"):
+        why = f"too many wrong PINs: try again in {reply.split()[-1]} s"
+    print(f"Not paired: {why or reply}", file=sys.stderr)
+    return 1
+
+
+# MARK: - The picture
+
+
+def size(text):
+    m = re.fullmatch(r"(\d{2,4})x(\d{2,4})", text)
+    if not m:
+        raise argparse.ArgumentTypeError("WIDTHxHEIGHT, e.g. 1920x1080")
+    return int(m.group(1)), int(m.group(2))
+
+
+def encoder_args(args):
+    """ffmpeg output options: VA-API, constant bitrate, no B-frames, a key frame every 2 s, a delimiter per frame."""
+    codec = "hevc_vaapi" if args.codec == "hevc" else "h264_vaapi"
+    bsf = "hevc_metadata=aud=insert" if args.codec == "hevc" else "h264_metadata=aud=insert"
+    fmt = "hevc" if args.codec == "hevc" else "h264"
+    return ["-vf", "format=nv12,hwupload", "-c:v", codec, "-rc_mode", "CBR", "-b:v", args.bitrate,
+            "-maxrate", args.bitrate, "-bf", "0", "-g", str(args.fps * 2), "-bsf:v", bsf, "-f", fmt, "-"]
+
+
+def encoder_command(args, screen, w, h):
+    base = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-vaapi_device", args.device]
+    if args.source == "test":
+        label = f"Station AR {screen}" if screen != "wide" else "Station AR wide"
+        text = f"{label}  %{{localtime\\:%H\\\\\\:%M\\\\\\:%S}}  frame %{{n}}"
+        src = (f"testsrc2=size={w}x{h}:rate={args.fps},"
+               f"drawtext=text='{text}':fontsize={h // 18}:fontcolor=white:box=1:boxcolor=black@0.6:x=60:y=60")
+        return base + ["-re", "-f", "lavfi", "-i", src] + encoder_args(args)
+    if args.source == "file":
+        return base + ["-re", "-stream_loop", "-1", "-i", args.file, "-an",
+                       "-vf", f"scale={w}:{h},format=nv12,hwupload"] + encoder_args(args)[2:]
+    # wf-recorder: a Hyprland headless output, captured at a constant frame rate, piped through ffmpeg for the
+    # delimiters.
+    return None
+
+
+def capture_pipeline(args, output, w, h):
+    """wf-recorder on `output` into ffmpeg (copy + delimiters): two processes, the second's stdout is the stream."""
+    codec = "hevc_vaapi" if args.codec == "hevc" else "h264_vaapi"
+    fmt = "hevc" if args.codec == "hevc" else "h264"
+    rec = ["wf-recorder", "-y", "-o", output, "-r", str(args.fps), "-c", codec, "-d", args.device,
+           "-p", "rc_mode=CBR", "-p", f"b={args.bitrate}", "-p", "bf=0", "-p", f"g={args.fps * 2}",
+           "-m", fmt, "-f", "/dev/stdout"]
+    fix = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", fmt, "-i", "-", "-c", "copy",
+           "-bsf:v", ("hevc_metadata=aud=insert" if fmt == "hevc" else "h264_metadata=aud=insert"), "-f", fmt, "-"]
+    return rec, fix
+
+
+class Encoder:
+    """The picture for one screen, as an Annex-B byte stream on stdout. Restarted for every connection, so the
+    Station gets a key frame at once."""
+
+    def __init__(self, args, screen, w, h, output=None):
+        self.args, self.screen, self.w, self.h, self.output = args, screen, w, h, output
+        self.procs = []
+
+    def start(self):
+        if self.output:
+            rec, fix = capture_pipeline(self.args, self.output, self.w, self.h)
+            p1 = subprocess.Popen(rec, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
+            p2 = subprocess.Popen(fix, stdin=p1.stdout, stdout=subprocess.PIPE, start_new_session=True)
+            p1.stdout.close()
+            self.procs = [p1, p2]
+        else:
+            cmd = encoder_command(self.args, self.screen, self.w, self.h)
+            self.procs = [subprocess.Popen(cmd, stdout=subprocess.PIPE, start_new_session=True)]
+        return self.procs[-1].stdout
+
+    def stop(self):
+        for p in self.procs:
+            if p.poll() is None:
+                p.terminate()
+        for p in self.procs:
+            try:
+                p.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        self.procs = []
+
+
+# MARK: - Hyprland headless outputs
+
+
+class Headless:
+    """Extra monitors that exist only for the Station: made on start, removed on exit (Ctrl-C too)."""
+
+    def __init__(self):
+        self.made = []
+
+    def create(self, name, w, h, fps, x):
+        subprocess.run(["hyprctl", "output", "create", "headless", name], check=True, capture_output=True)
+        self.made.append(name)
+        subprocess.run(["hyprctl", "keyword", "monitor", f"{name},{w}x{h}@{fps},{x}x0,1"], check=True,
+                       capture_output=True)
+        log(f"monitor {name}: {w}x{h}@{fps}")
+
+    def remove_all(self):
+        for name in reversed(self.made):
+            subprocess.run(["hyprctl", "output", "remove", name], capture_output=True)
+            log(f"monitor {name} removed")
+        self.made = []
+
+
+# MARK: - run
+
+
+def stream(args, host, port, entry, fp_pinned, screen, w, h, output=None):
+    """One screen: connect, say HELLO, copy the encoder's stream; on any failure, back off and do it again."""
+    delay = 0.5
+    enc = Encoder(args, screen, w, h, output)
+    while not stopping.is_set():
+        try:
+            s, fp = connect(host, port)
+        except OSError as e:
+            log(f"screen {screen}: can't reach {host}:{port} ({e.strerror or e}); retrying")
+            stopping.wait(delay)
+            delay = min(delay * 2, 3.0)
+            continue
+        try:
+            if fp != fp_pinned:
+                log(f"screen {screen}: {host} shows key {short(fp)}, not the paired {short(fp_pinned)}: refusing. "
+                    "If you reset Station AR, pair again.")
+                stopping.set()
+                return
+            send_line(s, f"STATIONAR {VERSION} HELLO {entry['token']} {screen} {w} {h} {args.fps} {args.codec}")
+            reply = read_line(s)
+            if reply != "OK":
+                wait = {"BUSY": 5, "CLOSED": 5}.get(reply)
+                if wait is None:
+                    log(f"screen {screen}: the Station said {reply}: "
+                        + {"DENIED": "this laptop isn't paired any more (station-ar-send pair)",
+                           "NO_DECODER": "it can't decode this size or codec"}.get(reply, "giving up"))
+                    stopping.set()
+                    return
+                log(f"screen {screen}: the Station said {reply} (no screen for it in AR now); waiting")
+                stopping.wait(wait)
+                continue
+            log(f"screen {screen}: streaming {w}x{h}@{args.fps} {args.codec} to {host}")
+            delay = 0.5
+            out = enc.start()
+            sent = 0
+            since = time.monotonic()
+            s.settimeout(10)
+            while not stopping.is_set():
+                chunk = os.read(out.fileno(), 65536)
+                if not chunk:
+                    log(f"screen {screen}: the encoder stopped")
+                    break
+                s.sendall(chunk)
+                sent += len(chunk)
+                now = time.monotonic()
+                if args.verbose and now - since >= 10:
+                    log(f"screen {screen}: {sent * 8 / (now - since) / 1e6:.1f} Mbit/s")
+                    sent, since = 0, now
+        except (OSError, ConnectionError) as e:
+            if not stopping.is_set():
+                log(f"screen {screen}: connection lost ({e}); reconnecting")
+        finally:
+            enc.stop()
+            try:
+                s.close()
+            except OSError:
+                pass
+        if not stopping.is_set():
+            stopping.wait(delay)
+            delay = min(delay * 2, 3.0)
+
+
+def missing_tools(args):
+    need = ["ffmpeg"]
+    if args.source == "wf-recorder":
+        need += ["wf-recorder", "hyprctl"]
+    missing = [t for t in need if shutil.which(t) is None]
+    if missing:
+        pkgs = {"ffmpeg": "ffmpeg", "wf-recorder": "wf-recorder", "hyprctl": "hyprland"}
+        print("Missing: " + ", ".join(missing) + "\nInstall with: sudo pacman -S "
+              + " ".join(sorted({pkgs[m] for m in missing})), file=sys.stderr)
+        return True
+    if not os.path.exists(args.device):
+        print(f"No VA-API device at {args.device} (--device)", file=sys.stderr)
+        return True
+    return False
+
+
+def cmd_run(args):
+    if args.source == "file" and not args.file:
+        print("--source file needs --file PATH", file=sys.stderr)
+        return 2
+    if missing_tools(args):
+        return 1
+    host = args.host or pick_host(args, need_paired=True)
+    hosts = load_hosts()
+    pinned = next(((fp, e) for fp, e in hosts.items() if e.get("host") == host), None)
+    if pinned is None:
+        print(f"This laptop isn't paired with {host}: station-ar-send pair {host}", file=sys.stderr)
+        return 1
+    fp_pinned, entry = pinned
+    port = args.port if args.port != PORT else entry.get("port", PORT)
+    w, h = args.size
+    if args.wide:
+        screens = [("wide", w * 2, h)]
+    else:
+        screens = [(str(i), w, h) for i in range(args.monitors)]
+
+    headless = Headless()
+
+    def on_signal(signum, frame):
+        stopping.set()
+
+    signal.signal(signal.SIGINT, on_signal)
+    signal.signal(signal.SIGTERM, on_signal)
+    signal.signal(signal.SIGHUP, on_signal)
+    threads = []
+    try:
+        for i, (screen, sw, sh) in enumerate(screens):
+            output = None
+            if args.source == "wf-recorder":
+                output = f"STATIONAR-{screen.upper()}"
+                headless.create(output, sw, sh, args.fps, 10000 + i * sw)
+            t = threading.Thread(target=stream, args=(args, host, port, entry, fp_pinned, screen, sw, sh, output),
+                                 daemon=True)
+            t.start()
+            threads.append(t)
+        while not stopping.is_set() and any(t.is_alive() for t in threads):
+            stopping.wait(0.5)
+    finally:
+        stopping.set()
+        for t in threads:
+            t.join(timeout=5)
+        headless.remove_all()
+    return 0
+
+
+# MARK: - discover (mDNS, one question from an ephemeral port: answers come back to it directly)
+
+
+def mdns_query(name, qtype=12):
+    header = struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0)
+    q = b"".join(bytes([len(p)]) + p.encode() for p in name.rstrip(".").split(".")) + b"\0"
+    return header + q + struct.pack("!HH", qtype, 0x8001)  # QU: answer by unicast
+
+
+def read_name(data, off):
+    labels, jumped, end = [], False, off
+    for _ in range(64):
+        n = data[off]
+        if n == 0:
+            off += 1
+            break
+        if n & 0xC0 == 0xC0:
+            if not jumped:
+                end = off + 2
+            off = ((n & 0x3F) << 8) | data[off + 1]
+            jumped = True
+            continue
+        labels.append(data[off + 1:off + 1 + n].decode("utf-8", "replace"))
+        off += 1 + n
+    return ".".join(labels) + ".", (end if jumped else off)
+
+
+def parse_records(data):
+    _, _, qd, an, ns, ar = struct.unpack("!HHHHHH", data[:12])
+    off = 12
+    for _ in range(qd):
+        _, off = read_name(data, off)
+        off += 4
+    out = []
+    for _ in range(an + ns + ar):
+        name, off = read_name(data, off)
+        rtype, _, _, rdlen = struct.unpack("!HHIH", data[off:off + 10])
+        off += 10
+        rdata = data[off:off + rdlen]
+        if rtype == 12:
+            out.append(("PTR", name, read_name(data, off)[0]))
+        elif rtype == 33:
+            prio, weight, port = struct.unpack("!HHH", rdata[:6])
+            out.append(("SRV", name, (read_name(data, off + 6)[0], port)))
+        elif rtype == 1 and rdlen == 4:
+            out.append(("A", name, socket.inet_ntoa(rdata)))
+        elif rtype == 16:
+            txt, i = {}, 0
+            while i < len(rdata):
+                n = rdata[i]
+                k, _, v = rdata[i + 1:i + 1 + n].decode("utf-8", "replace").partition("=")
+                txt[k] = v
+                i += 1 + n
+            out.append(("TXT", name, txt))
+        off += rdlen
+    return out
+
+
+def discover(wait=2.0):
+    """[(name, ip, port, fingerprint start)] for each Station with AR open."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s.settimeout(0.3)
+    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+    found = {}
+    try:
+        end = time.monotonic() + wait
+        nxt = 0
+        records = []
+        while time.monotonic() < end:
+            if time.monotonic() >= nxt:
+                s.sendto(mdns_query(SERVICE), ("224.0.0.251", 5353))
+                nxt = time.monotonic() + 0.7
+            try:
+                data, addr = s.recvfrom(9000)
+            except socket.timeout:
+                continue
+            try:
+                records += [(r, addr[0]) for r in parse_records(data)]
+            except (IndexError, struct.error, UnicodeError):
+                continue
+        instances = {r[2] for r, _ in records if r[0] == "PTR" and r[1].lower() == SERVICE.lower()}
+        for inst in instances:
+            srv = next((r[2] for r, _ in records if r[0] == "SRV" and r[1] == inst), None)
+            txt = next((r[2] for r, _ in records if r[0] == "TXT" and r[1] == inst), {})
+            if not srv:
+                continue
+            target, port = srv
+            ip = next((r[2] for r, _ in records if r[0] == "A" and r[1] == target), None)
+            ip = ip or next((src for r, src in records if r[1] == inst), None)
+            found[inst] = (inst.split(".")[0].replace("\\032", " "), ip, port, txt.get("fp", ""))
+    finally:
+        s.close()
+    return list(found.values())
+
+
+def pick_host(args, need_paired):
+    """The Station to use when no HOST is given: the only paired one that answers mDNS, else the only paired one."""
+    hosts = load_hosts()
+    seen = discover()
+    for name, ip, port, fp in seen:
+        if fp and any(k.startswith(fp) for k in hosts):
+            args.port = port
+            return ip
+    if not need_paired and len(seen) == 1:
+        args.port = seen[0][2]
+        return seen[0][1]
+    if len(hosts) == 1:
+        return next(iter(hosts.values()))["host"]
+    print("Which Station? Give its address (station-ar-send discover lists the ones with AR open).", file=sys.stderr)
+    sys.exit(2)
+
+
+def cmd_discover(args):
+    seen = discover(args.wait)
+    if not seen:
+        print("No Station with AR open answered. Open AR on the Station, or give its address.")
+        return 1
+    hosts = load_hosts()
+    for name, ip, port, fp in seen:
+        paired = "paired" if fp and any(k.startswith(fp) for k in hosts) else "not paired"
+        print(f"{ip}:{port}  {name}  key {fp[:8].upper()}  ({paired})")
+    return 0
+
+
+def cmd_forget(args):
+    hosts = load_hosts()
+    if args.host == "all":
+        hosts = {}
+    else:
+        hosts = {k: v for k, v in hosts.items() if v.get("host") != args.host}
+    save_hosts(hosts)
+    print("Forgotten on this laptop. (Station AR keeps its side until you forget it there.)")
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="station-ar-send", description=__doc__.split("\n")[0])
+    sub = p.add_subparsers(dest="cmd", required=True)
+    pp = sub.add_parser("pair", help="pair this laptop with a Station (once)")
+    pp.add_argument("host", nargs="?")
+    pp.add_argument("--port", type=int, default=PORT)
+    pp.add_argument("--name", help="what the Station calls this laptop (default: the hostname)")
+    pr = sub.add_parser("run", help="stream monitors to the Station")
+    pr.add_argument("host", nargs="?")
+    pr.add_argument("--port", type=int, default=PORT)
+    pr.add_argument("--source", choices=["wf-recorder", "test", "file"], default="wf-recorder",
+                    help="real monitors (Hyprland headless outputs), a test pattern, or a video file")
+    pr.add_argument("--file", help="the video for --source file")
+    pr.add_argument("--monitors", type=int, choices=[1, 2], default=1)
+    pr.add_argument("--wide", action="store_true", help="one stream twice as wide, shown as two screens")
+    pr.add_argument("--size", type=size, default=(1920, 1080), help="each monitor's size (default 1920x1080)")
+    pr.add_argument("--fps", type=int, default=60)
+    pr.add_argument("--codec", choices=["hevc", "avc"], default="hevc")
+    pr.add_argument("--bitrate", default="15M")
+    pr.add_argument("--device", default=DEVICE, help="the VA-API render node")
+    pr.add_argument("-v", "--verbose", action="store_true")
+    pd = sub.add_parser("discover", help="list Stations with AR open")
+    pd.add_argument("--wait", type=float, default=2.0)
+    pf = sub.add_parser("forget", help="forget a Station's pairing on this laptop")
+    pf.add_argument("host", help="its address, or all")
+    args = p.parse_args(argv)
+    return {"pair": cmd_pair, "run": cmd_run, "discover": cmd_discover, "forget": cmd_forget}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except KeyboardInterrupt:
+        sys.exit(130)

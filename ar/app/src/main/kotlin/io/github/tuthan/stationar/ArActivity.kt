@@ -18,23 +18,33 @@ import io.github.tuthan.stationar.core.scene.PanelLayout
 import io.github.tuthan.stationar.core.scene.Presets
 import io.github.tuthan.stationar.core.scene.ScreenSpec
 import io.github.tuthan.stationar.core.store.Settings
+import io.github.tuthan.stationar.core.stream.Handshake
 import io.github.tuthan.stationar.glasses.GlassesSession
+import io.github.tuthan.stationar.receiver.Advertiser
+import io.github.tuthan.stationar.receiver.StreamServer
+import io.github.tuthan.stationar.receiver.Tls
 import io.github.tuthan.stationar.render.PanelView
 import io.github.tuthan.stationar.render.Renderer
 import io.github.tuthan.stationar.sensors.SensorSource
 import io.github.tuthan.stationar.sources.Source
+import io.github.tuthan.stationar.sources.StreamSource
 import io.github.tuthan.stationar.sources.TestCardSource
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 
 /**
  * AR mode: screens that stay put in the room as you turn your head. The GL scene is [Renderer]'s; this activity owns
- * the layout, the keys, the panel, the HUD and the glasses session. Leaving it (Back, Home, or anything that stops it)
- * ends AR: everything is released, and the glasses go back to their refresh rate, in 2D.
+ * the layout, the keys, the panel, the HUD, the glasses session and the laptop receiver. Leaving it (Back, Home, or
+ * anything that stops it) ends AR: everything is released, the receiver's port closes, and the glasses go back to
+ * their refresh rate, in 2D.
  */
-class ArActivity : Activity(), Renderer.Listener {
+class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
     private lateinit var settings: Settings
     private lateinit var sensors: SensorSource
     private lateinit var renderer: Renderer
@@ -53,12 +63,22 @@ class ArActivity : Activity(), Renderer.Listener {
     private var calibration: Quat? = null
     private var calibrating = false
 
+    // The laptop receiver. Its sources outlive connections (and layouts) while AR is open.
+    private val streams = ConcurrentHashMap<String, StreamSource>()
+    private var server: StreamServer? = null
+    private lateinit var advertiser: Advertiser
+    @Volatile private var fingerprint = ""
+    private var pairingLine: String? = null
+    /** Streams whose screen you put away (a preset without them): they're refused until a layout shows them again. */
+    private val dismissed = HashSet<String>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         settings = StationAr.settings(this)
         sensors = SensorSource(getSystemService(SensorManager::class.java))
         glasses = GlassesSession(this)
+        advertiser = Advertiser(this)
         renderer = Renderer(sensors, settings.axes ?: AxisCalibration.DEFAULT, this)
         renderer.pose.predictSeconds = settings.predictMs / 1000f
         glView = GLSurfaceView(this).apply {
@@ -76,6 +96,7 @@ class ArActivity : Activity(), Renderer.Listener {
             renderer.setLayout(layout) { name -> sourceFor(name) }
         }
         AppLog.i("AR: open, layout ${layout.encode()}")
+        work.execute { startReceiver() }
     }
 
     /** The layout to open in: the intent's preset, else the setting, else the last one, else the welcome card. */
@@ -88,7 +109,12 @@ class ArActivity : Activity(), Renderer.Listener {
     /** Makes the source a screen asks for (GL thread, from Renderer.setLayout). */
     private fun sourceFor(name: String): Source? = when {
         name == ScreenSpec.CARD -> TestCardSource(sensors.available && GlassesSession.plugged(this))
+        name in STREAMS -> stream(name)
         else -> null
+    }
+
+    private fun stream(name: String): StreamSource = streams.getOrPut(name) {
+        StreamSource(name).also { it.label = if (name == "wide") "Laptop (wide)" else StationAr.screenLabel(name) }
     }
 
     override fun onResume() {
@@ -129,6 +155,11 @@ class ArActivity : Activity(), Renderer.Listener {
             work.execute { settings.lastLayout = last }
             renderer.release()
         }
+        work.execute {
+            advertiser.stop()
+            server?.stop()
+            server = null
+        }
         work.execute { glasses.leave() }
         if (!isFinishing) finish()
     }
@@ -142,6 +173,7 @@ class ArActivity : Activity(), Renderer.Listener {
         }
     }
 
+
     override fun onTracking(tracking: Boolean) {
         main.post {
             this.tracking = tracking
@@ -150,6 +182,73 @@ class ArActivity : Activity(), Renderer.Listener {
             updateHud()
         }
     }
+
+    // MARK: - The laptop receiver
+
+    /** Opens the port and advertises it (worker thread). */
+    private fun startReceiver() {
+        if (leaving) return
+        try {
+            val fp = Tls.fingerprint()
+            fingerprint = fp
+            val s = StreamServer(settings.port, StationAr.pairing(this), this)
+            s.start()
+            server = s
+            advertiser.start(settings.port, fp)
+        } catch (e: Exception) {
+            AppLog.w("receiver: couldn't start", e)
+        }
+    }
+
+    override fun onPairing(name: String, pin: String?) {
+        main.post {
+            pairingLine = if (pin == null) null else "Pair \"$name\": PIN $pin  ·  key ${fingerprint.take(8)}"
+            updateHud()
+        }
+    }
+
+    override fun onStream(hello: Handshake.Request.Hello, laptop: String, connection: StreamServer.Connection) {
+        if (StreamSource.decoderFor(hello) == null) {
+            connection.answer("NO_DECODER")
+            return
+        }
+        // A screen must show the stream: add one if none does (unless you put it away), then play.
+        val refusal = AtomicReference<String?>(null)
+        val done = CountDownLatch(1)
+        main.post {
+            if (leaving || hello.source in dismissed) {
+                refusal.set("CLOSED")
+                done.countDown()
+                return@post
+            }
+            glView.queueEvent {
+                val now = renderer.currentLayout()
+                if (!shows(now, hello.source)) {
+                    val placed = Presets.place(now, hello.source, hello.width, hello.height)
+                    if (placed == null) {
+                        refusal.set("BUSY")
+                    } else {
+                        renderer.setLayout(placed) { name -> sourceFor(name) }
+                        main.post {
+                            layout = placed
+                            updateHud()
+                        }
+                    }
+                }
+                done.countDown()
+            }
+        }
+        if (!done.await(3, TimeUnit.SECONDS)) refusal.set("CLOSED")
+        refusal.get()?.let {
+            AppLog.i("receiver: ${hello.source} refused: $it")
+            connection.answer(it)
+            return
+        }
+        stream(hello.source).play(hello, laptop, connection)
+    }
+
+    private fun shows(l: Layout, source: String) =
+        if (source == "wide") l.screens.any { it.kind == "wide" } else l.indexOf(source) >= 0
 
     // MARK: - Keys
 
@@ -289,6 +388,10 @@ class ArActivity : Activity(), Renderer.Listener {
             }
             id.startsWith("preset:") -> {
                 val l = Presets.layout(id.removePrefix("preset:")) ?: return
+                // A laptop streaming to a screen this preset doesn't have stays away until one does.
+                for (name in STREAMS) {
+                    if (shows(l, name)) dismissed.remove(name) else if (streams[name]?.connected == true) dismissed.add(name)
+                }
                 setLayout(l)
                 closePanel()
             }
@@ -377,6 +480,10 @@ class ArActivity : Activity(), Renderer.Listener {
     private val clock = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     private fun updateHud() {
+        pairingLine?.let {
+            glView.queueEvent { renderer.setHud(it) }
+            return
+        }
         val parts = ArrayList<String>()
         parts.add(clock.format(Date()))
         battery()?.let { parts.add(it) }
@@ -401,6 +508,7 @@ class ArActivity : Activity(), Renderer.Listener {
         const val EXTRA_PRESET = "preset"
         const val EXTRA_PACKAGE = "package"
         const val EXTRA_LAPTOP = "laptop"
+        private val STREAMS = listOf("laptop:0", "laptop:1", "wide")
         private const val TURN_STEP = 5f
         private const val NUDGE_STEP = 5f
     }

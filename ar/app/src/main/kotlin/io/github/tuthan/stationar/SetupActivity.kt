@@ -20,6 +20,7 @@ import android.widget.TextView
 import io.github.tuthan.stationar.core.pose.AxisCalibration
 import io.github.tuthan.stationar.core.pose.HeadPose
 import io.github.tuthan.stationar.glasses.GlassesSession
+import io.github.tuthan.stationar.receiver.Tls
 import io.github.tuthan.stationar.sensors.SensorSource
 import java.util.Locale
 import java.util.concurrent.Executors
@@ -34,6 +35,7 @@ class SetupActivity : Activity() {
     private lateinit var sensors: SensorSource
     private lateinit var status: TextView
     private lateinit var tracking: TextView
+    private lateinit var laptops: TextView
     private val sample = SensorSource.Sample()
     private var pose = HeadPose()
     private var lastCount = 0L
@@ -63,6 +65,8 @@ class SetupActivity : Activity() {
         column.addView(status)
         tracking = text("", 18f, Color.rgb(94, 234, 212)).also { it.typeface = Typeface.MONOSPACE }
         column.addView(tracking)
+        laptops = text("", 18f, Color.rgb(220, 230, 235)).also { it.setPadding(0, dp(16), 0, 0) }
+        column.addView(laptops)
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(28), 0, 0)
@@ -92,6 +96,21 @@ class SetupActivity : Activity() {
         lastCount = 0
         sensors.start()
         tick.run()
+        val port = StationAr.settings(this).port
+        val pairing = StationAr.pairing(this)
+        work.execute {
+            val key = try {
+                Tls.fingerprint().take(8).uppercase()
+            } catch (e: Exception) {
+                AppLog.w("receiver key", e)
+                "?"
+            }
+            val names = pairing.laptops()
+            main.post {
+                laptops.text = "Laptops: " + (if (names.isEmpty()) "none paired yet" else names.joinToString(", ")) +
+                    "\nReceiver: port $port, key $key (open while AR is; station-ar-send pairs a laptop)"
+            }
+        }
     }
 
     override fun onPause() {
