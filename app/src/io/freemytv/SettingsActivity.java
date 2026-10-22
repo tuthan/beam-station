@@ -46,9 +46,9 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /**
- * Beam Home's settings (the app's icon, "All Apps", or the gear on the home screen), in the style of Apple TV's
+ * The app's settings (its icon, "All Apps", or the gear on the home screen), in the style of Apple TV's
  * settings: the big symbol and title on the left, the list on the right with the focused row in white. "Home screen"
- * opens the Beam Home / Original choice (with a check on the current one); the switch runs in the main process
+ * opens the choice of ours or Original (with a check on the current one); the switch runs in the main process
  * (HomeMode) and this screen only asks for it and follows the state file.
  */
 public class SettingsActivity extends Activity {
@@ -280,7 +280,7 @@ public class SettingsActivity extends Activity {
             scene.setMotion(0.5f, 0.2f);
             scene.applyPalette();
             setFocusable(true);
-            setContentDescription("Beam Home");
+            setContentDescription(Config.APP_NAME);
             // TalkBack: one item per row, id = row + 1.
             spoken = new Spoken(this, new Spoken.Source() {
                 @Override public void items(List<Integer> out) { for (int i = 1; i <= rowCount(); i++) out.add(i); }
@@ -310,7 +310,7 @@ public class SettingsActivity extends Activity {
                     if (row == 0) {
                         String busyText = busyText();
                         String value = busy() ? (busyText.isEmpty() ? Ui.tr("Começando…", "Starting…") : busyText)
-                                : freeActive() ? "Beam Home" : Ui.tr("Original", "Original");
+                                : freeActive() ? Config.APP_NAME : Ui.tr("Original", "Original");
                         return Ui.tr("Início, ", "Home Screen, ") + value;
                     }
                     if (mainRow(row) == WIFI_ROW) return Ui.tr("Wi-Fi", "Wi-Fi") + ", " + wifiSummary();
@@ -349,7 +349,7 @@ public class SettingsActivity extends Activity {
                     return row < rows.length ? rows[row][0] + ", " + rows[row][1] : "";
                 }
                 case HOME_CHOICE: {
-                    String name = row == 0 ? "Beam Home, " + Ui.tr("sem anúncios, com a tela de descanso nova", "no ads, with the new screensaver")
+                    String name = row == 0 ? Config.APP_NAME + ", " + Ui.tr("sem anúncios, com a tela de descanso nova", "no ads, with the new screensaver")
                             : "Original, " + Ui.tr("o Início de fábrica da TV", "the TV's factory home screen");
                     boolean inUse = (row == 0) == freeActive();
                     return name + (inUse ? Ui.tr(". Em uso", ". In use") : "") + ", " + (row + 1) + Ui.tr(" de 2", " of 2");
@@ -554,7 +554,7 @@ public class SettingsActivity extends Activity {
             // On the left: big symbol, title, description.
             float cx = 500 * k;
             Symbols.draw(getContext(), c, "mark", cx, 400 * k, 150 * k, 0xEBFFFFFF);
-            c.drawText("Beam Home", cx, 612 * k, title);
+            c.drawText(Config.APP_NAME, cx, 612 * k, title);
             c.drawText(Ui.tr("Início e tela de descanso da TV", "Your TV's home screen and screensaver"), cx, 660 * k, subtitle);
             c.drawText(versionName(getContext()), cx, 704 * k, version);
 
@@ -566,7 +566,7 @@ public class SettingsActivity extends Activity {
         private void drawMain(Canvas c, float seconds) {
             boolean working = busy();
             String busyText = busyText();
-            String mode = freeActive() ? "Beam Home" : Ui.tr("Original", "Original");
+            String mode = freeActive() ? Config.APP_NAME : Ui.tr("Original", "Original");
             String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Tela de Descanso", "Screensaver"),
                     Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Prateleira", "Shelf"),
                     Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi"), "Bluetooth",
@@ -678,7 +678,7 @@ public class SettingsActivity extends Activity {
             c.drawText(Ui.tr("COMPARAÇÃO", "COMPARISON"), x, y, header);
             cellValue.setColor(0x73FFFFFF);
             c.drawText(Ui.tr("Original", "Original"), colA, y, cellValue);
-            c.drawText("Beam Home", colB, y, cellValue);
+            c.drawText(Config.APP_NAME, colB, y, cellValue);
             cellValue.setColor(0xD9FFFFFF);
             JSONObject metrics = state.optJSONObject("metrics");
             JSONObject a = metrics == null ? null : metrics.optJSONObject(HomeMode.ORIGINAL);
@@ -709,11 +709,11 @@ public class SettingsActivity extends Activity {
             if (shown == 0) c.drawText(Ui.tr("Nenhum ainda.", "None yet."), x, y + 42 * k, notice);
         }
 
-        /** Home screen choice: Beam Home or the original, with a check on the one in use. */
+        /** Home screen choice: ours or the original, with a check on the one in use. */
         private void drawChoice(Canvas c) {
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
             c.drawText(Ui.tr("Início", "Home Screen"), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
-            String[][] options = {{"Beam Home", Ui.tr("Sem anúncios, com a tela de descanso nova", "No ads, with the new screensaver")},
+            String[][] options = {{Config.APP_NAME, Ui.tr("Sem anúncios, com a tela de descanso nova", "No ads, with the new screensaver")},
                     {Ui.tr("Original", "Original"), Ui.tr("O Início de fábrica da TV", "The TV's factory home screen")}};
             int current = freeActive() ? 0 : 1;
             for (int i = 0; i < 2; i++) {
@@ -775,9 +775,9 @@ public class SettingsActivity extends Activity {
 
         private static String versionName(Context c) {
             try {
-                return "Beam Home " + c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionName;
+                return Config.APP_NAME + " " + c.getPackageManager().getPackageInfo(c.getPackageName(), 0).versionName;
             } catch (android.content.pm.PackageManager.NameNotFoundException e) {
-                return "Beam Home";
+                return Config.APP_NAME;
             }
         }
 
@@ -1603,8 +1603,8 @@ public class SettingsActivity extends Activity {
                 screen = WIFI_FORGET;
                 focus = 1;   // Cancel: forgetting is never one press away
             } else if (n.security.isEmpty()) {
-                wifiLine = Ui.tr("Esta rede pede um login que o Beam Home não faz: use os Ajustes da TV.",
-                        "This network needs a sign-in Beam Home can't do: use TV Settings.");
+                wifiLine = Ui.tr("Esta rede pede um login que o " + Config.APP_NAME + " não faz: use os Ajustes da TV.",
+                        "This network needs a sign-in " + Config.APP_NAME + " can't do: use TV Settings.");
             } else if (n.needsPassword()) {
                 askPassword(n);
             } else {

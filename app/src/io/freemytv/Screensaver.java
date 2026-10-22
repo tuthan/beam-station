@@ -3,7 +3,7 @@ package io.freemytv;
 import android.service.dreams.DreamService;
 
 /**
- * The Beam Home screensaver (enabled in Beam Home mode via `settings put secure screensaver_components`). The system
+ * The app's screensaver (enabled in our mode via `settings put secure screensaver_components`). The system
  * still decides when it starts and when the TV turns off (e.g. after 10 min idle, then 2 h later), as before: the app
  * doesn't change those timings. Any key exits.
  */

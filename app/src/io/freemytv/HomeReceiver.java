@@ -12,7 +12,7 @@ public class HomeReceiver extends BroadcastReceiver {
             HomeMode.bootCheck(context);
             if (Power.available()) Power.setTimer(context, 0);   // alarms don't outlive a reboot
         } else if (Intent.ACTION_MY_PACKAGE_REPLACED.equals(action)) {
-            HomeMode.verify(context);   // app updated: complete Beam Home mode if something is missing
+            HomeMode.verify(context);   // app updated: complete our mode if something is missing
             HomeMode.ensureRemoteService(context, 3_000);
         } else if (Power.SLEEP_TIMER.equals(action)) {
             PendingResult result = goAsync();   // the TV's ADB is a network call

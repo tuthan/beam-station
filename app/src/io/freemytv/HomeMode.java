@@ -25,7 +25,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * Original ⇄ Beam Home. "free": our home screen and screensaver, and the apps in the lists below turned off
+ * Original ⇄ ours. "free": our home screen and screensaver, and the apps in the lists below turned off
  * (pm disable-user: still installed, back with one button). "original": everything as it came from the factory.
  *
  * It all goes through the TV's own ADB (Adb, 127.0.0.1:5555), which you allow once on the TV. The switches run as
@@ -54,7 +54,7 @@ final class HomeMode {
     static final String GOOGLE_SETUP = "com.google.android.tungsten.setupwraith";
 
     /**
-     * Turned off in Beam Home mode, when the TV has them. Google extras first, then TV-maker extras (TCL here; add
+     * Turned off in our mode, when the TV has them. Google extras first, then TV-maker extras (TCL here; add
      * your brand's, see the README). The TV's own home screen and screensaver are added at switch time.
      */
     static final String[] DEBLOAT = {
@@ -94,7 +94,7 @@ final class HomeMode {
 
     /**
      * Rokid Station (the box for Rokid's AR glasses): its ROM refuses `pm disable-user` for every system app, so nothing
-     * is turned off; Station Home only takes the home screen. Rokid's launcher stays on and keeps HOME away from us through
+     * is turned off; the app only takes the home screen. Rokid's launcher stays on and keeps HOME away from us through
      * plugging the glasses and a reboot (tested). Its apps share the system UID. Only in the Rokid build
      * (Config.DEVICE), on a Rokid.
      */
@@ -189,20 +189,20 @@ final class HomeMode {
         ModeJob.schedule(c, ModeJob.REVERT, null, 0);
     }
 
-    /** After the TV boots (and after a TV update): wait for the system to settle and check Beam Home mode. */
+    /** After the TV boots (and after a TV update): wait for the system to settle and check our mode. */
     static void bootCheck(Context c) {
         ensureRemoteService(c, 30_000);
         ModeJob.schedule(c, ModeJob.VERIFY, null, 45_000);
     }
 
-    /** After an update of this app: complete Beam Home mode if anything is missing. */
+    /** After an update of this app: complete our mode if anything is missing. */
     static void verify(Context c) {
         ModeJob.schedule(c, ModeJob.VERIFY, null, 0);
     }
 
     /**
      * The remote's app buttons (RemoteKeys) need an accessibility service that only filters those keys. It is on only
-     * on TCL, Vestel, KTC and Sony TVs (and Formovie projectors) in Beam Home mode, and goes off with Original. Android turns it off when this app is updated, so the
+     * on TCL, Vestel, KTC and Sony TVs (and Formovie projectors) in our mode, and goes off with Original. Android turns it off when this app is updated, so the
      * boot check and an update turn it back on.
      */
     static void ensureRemoteService(Context c, long delayMs) {
@@ -320,7 +320,7 @@ final class HomeMode {
             Set<String> disabled = new HashSet<>(stringList(state(c), "disabled"));
             Set<String> present = packages(adb, "");
             Set<String> keptOff = new HashSet<>(stringList(state(c), "keptOff"));
-            // Off now and not on our list: the person turned it off, unless an earlier install of Beam Home did (its
+            // Off now and not on our list: the person turned it off, unless an earlier install of the app did (its
             // list lives in the TV's settings too, since an uninstall erases our state file).
             Set<String> ours = recorded(adb);
             for (String pkg : packages(adb, "-d")) {
@@ -361,15 +361,15 @@ final class HomeMode {
                     AppLog.w("remote buttons service: " + e.getMessage());
                 }
             }
-            notice(c, Ui.tr("Beam Home ligado: Início e tela de descanso novos, " + disabled.size() + " apps desligados.",
-                    "Beam Home is on: new home screen and screensaver, " + disabled.size() + " apps turned off."));
-            busy(c, Ui.tr("Medindo o Beam Home…", "Measuring Beam Home…"));
+            notice(c, Ui.tr(Config.APP_NAME + " ligado: Início e tela de descanso novos, " + disabled.size() + " apps desligados.",
+                    Config.APP_NAME + " is on: new home screen and screensaver, " + disabled.size() + " apps turned off."));
+            busy(c, Ui.tr("Medindo o " + Config.APP_NAME + "…", "Measuring " + Config.APP_NAME + "…"));
             measureHomeTime(c, adb, FREE);
             done(c, null);
             adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
             ModeJob.schedule(c, ModeJob.MEMORY, FREE, 120_000);
         } catch (Exception e) {
-            done(c, Ui.tr("Não deu para ligar o Beam Home: ", "Couldn't turn on Beam Home: ") + (Ui.ru ? Russian.text(e.getMessage() == null ? "" : e.getMessage()) : e.getMessage()));
+            done(c, Ui.tr("Não deu para ligar o " + Config.APP_NAME + ": ", "Couldn't turn on " + Config.APP_NAME + ": ") + (Ui.ru ? Russian.text(e.getMessage() == null ? "" : e.getMessage()) : e.getMessage()));
         }
     }
 
@@ -430,7 +430,7 @@ final class HomeMode {
     }
 
     /**
-     * XGIMI: lets this app set the system language (Xgimi keeps it in Beam Home's while XGIMI Settings turns it to
+     * XGIMI: lets this app set the system language (Xgimi keeps it in the app's while XGIMI Settings turns it to
      * Chinese) and search for Bluetooth devices (Android 10+ ties that to location, never read here), or takes that
      * back. The language stays as it is; XGIMI Settings switches it again when it opens.
      */
@@ -532,8 +532,8 @@ final class HomeMode {
                 restoreScreensaver(adb, s);
                 s.put("homeReverted", true).put("disabled", kept);
                 save(app, s);
-                notice(app, Ui.tr("O Início do Beam Home caiu 3 vezes seguidas; voltei para o Início original.",
-                        "Beam Home's home screen crashed 3 times in a row; I switched back to the original one."));
+                notice(app, Ui.tr("O Início do " + Config.APP_NAME + " caiu 3 vezes seguidas; voltei para o Início original.",
+                        Config.APP_NAME + "'s home screen crashed 3 times in a row; I switched back to the original one."));
                 adb.shell("am start -a android.intent.action.MAIN -c android.intent.category.HOME");
             } catch (Exception e) {
                 AppLog.w("could not give the home screen back: " + e.getMessage());
@@ -542,7 +542,7 @@ final class HomeMode {
     }
 
     /**
-     * In Beam Home mode, checks that everything is still as we left it (the listed apps off, our home screen and
+     * In our mode, checks that everything is still as we left it (the listed apps off, our home screen and
      * screensaver) and completes whatever is missing, with a notice. Runs after the TV boots (TV updates can turn
      * things back on) and after an update of this app.
      */
@@ -572,7 +572,7 @@ final class HomeMode {
                     }
                 }
                 Set<String> disabled = new HashSet<>(stringList(s, "disabled"));
-                // Off before Beam Home: turned off again if a TV update brings one back, but never handed to
+                // Off before our mode: turned off again if a TV update brings one back, but never handed to
                 // Original to turn on.
                 List<String> keptOff = stringList(s, "keptOff");
                 Set<String> ownPkgs = switchTime(home, dream);
@@ -609,14 +609,14 @@ final class HomeMode {
                 latest.put("disabled", new JSONArray(sorted(disabled)));
                 save(app, latest);
             } catch (Exception e) {
-                notice(app, Ui.tr("Não consegui conferir o Beam Home: ", "Couldn't check Beam Home: ") + (Ui.ru ? Russian.text(e.getMessage() == null ? "" : e.getMessage()) : e.getMessage()));
+                notice(app, Ui.tr("Não consegui conferir o " + Config.APP_NAME + ": ", "Couldn't check " + Config.APP_NAME + ": ") + (Ui.ru ? Russian.text(e.getMessage() == null ? "" : e.getMessage()) : e.getMessage()));
                 return;
             }
             if (!fixed.isEmpty()) {
                 notice(app, (updated ? Ui.tr("A atualização da TV religou ", "The TV update turned back on ")
                         : Ui.tr("Desliguei o que faltava: ", "Turned off what was missing: ")) + String.join(", ", fixed) + ".");
             } else if (updated) {
-                notice(app, Ui.tr("A TV foi atualizada; o Beam Home continua igual.", "The TV was updated; Beam Home is still on."));
+                notice(app, Ui.tr("A TV foi atualizada; o " + Config.APP_NAME + " continua igual.", "The TV was updated; " + Config.APP_NAME + " is still on."));
             }
         }
     }
@@ -976,7 +976,7 @@ final class HomeMode {
     }
 
     /**
-     * What Beam Home turned off, kept in the TV's own settings too: an uninstall or Clear data erases our state file,
+     * What the app turned off, kept in the TV's own settings too: an uninstall or Clear data erases our state file,
      * and a new install must still tell its own work from what the person had turned off (#142).
      */
     private static final String RECORD = "free_my_tv_disabled";

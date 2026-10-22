@@ -6,14 +6,14 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-    <!-- After the TV boots (and after a TV update), checks that Beam Home mode is still as you left it. -->
+    <!-- After the TV boots (and after a TV update), checks that our mode is still as you left it. -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <!-- XGIMI projectors only, granted through ADB in Beam Home mode: the system language (XGIMI Settings turns it to
+    <!-- XGIMI projectors only, granted through ADB in our mode: the system language (XGIMI Settings turns it to
          Chinese). Elsewhere they're never granted and unused. -->
     <uses-permission android:name="android.permission.CHANGE_CONFIGURATION" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
     <!-- XGIMI projectors and the Rokid Station (Android 11): the Bluetooth screen. Searching needs location there, granted
-         through ADB in Beam Home mode; the location itself is never read. -->
+         through ADB in our mode; the location itself is never read. -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
@@ -69,7 +69,7 @@
         android:allowBackup="false"
         android:usesCleartextTraffic="false">
 
-        <!-- The app's icon opens the settings (switch between Beam Home and the original home screen). -->
+        <!-- The app's icon opens the settings (switch between ours and the original home screen). -->
         <activity
             android:name=".SettingsActivity"
             android:process=":home"
@@ -89,7 +89,7 @@
         </activity>
 
         <!-- The home screen. Its own process (:home): if it ever crashes, the safety net in the main process still
-             works. It only becomes the TV's home screen in Beam Home mode (cmd package set-home-activity). -->
+             works. It only becomes the TV's home screen in our mode (cmd package set-home-activity). -->
         <activity
             android:name=".HomeActivity"
             android:process=":home"

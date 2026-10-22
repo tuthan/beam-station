@@ -25,8 +25,8 @@ import java.util.function.Consumer;
 /**
  * XGIMI projectors: auto focus, auto keystone, speaker mode and HDMI through XGIMI's own services (exported, with no
  * permission), the Play 6's battery, eco mode, corrections after a move and HDMI game mode, and the system language. XGIMI's screens are Chinese only, and its Settings switches the system to
- * Chinese each time it opens, with a notice whose OK closes the panel. So in Beam Home mode the system language
- * follows Beam Home's: Chinese just before XGIMI's panel opens (no notice), ours again when our windows get focus back.
+ * Chinese each time it opens, with a notice whose OK closes the panel. So in our mode the system language
+ * follows the app's: Chinese just before XGIMI's panel opens (no notice), ours again when our windows get focus back.
  */
 final class Xgimi {
     private Xgimi() {}
@@ -342,7 +342,7 @@ final class Xgimi {
     }
 
     /**
-     * A Beam Home window (home screen, settings) got or lost focus. Back from the panel we opened in Chinese, the
+     * One of our windows (home screen, settings) got or lost focus. Back from the panel we opened in Chinese, the
      * language is ours again. Not when XGIMI switched it itself (the remote's Settings key): its notice closes the
      * panel, and taking the language back would bring the notice back on every press.
      */
@@ -362,7 +362,7 @@ final class Xgimi {
         CHECK.execute(() -> HomeMode.xgimiHomeCheck(app));
     }
 
-    /** A Beam Home screen goes to the background (an app is opening): the app gets our language. */
+    /** One of our screens goes to the background (an app is opening): the app gets our language. */
     static void paused(Context c) {
         if (HomeMode.XGIMI) keepLanguage(c);
     }
@@ -382,7 +382,7 @@ final class Xgimi {
 
     /**
      * XGIMI force-stops apps a few seconds after they leave the screen, so the check after an update or a boot may
-     * never have run, and the permissions it grants may be missing. Asked once per process, in Beam Home mode.
+     * never have run, and the permissions it grants may be missing. Asked once per process, in our mode.
      */
     private static void heal(Context app) {
         if (verifyAsked) return;
@@ -394,7 +394,7 @@ final class Xgimi {
         });
     }
 
-    /** Only in Beam Home mode, once the switch has let this app change the system configuration (HomeMode). */
+    /** Only in our mode, once the switch has let this app change the system configuration (HomeMode). */
     private static boolean canKeep(Context app) {
         return HomeMode.XGIMI && granted(app) && HomeMode.FREE.equals(HomeMode.state(app).optString("mode"));
     }

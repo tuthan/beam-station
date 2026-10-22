@@ -216,7 +216,7 @@ final class HomeApps {
         return shortcut(kind, key, label, symbol);
     }
 
-    /** Beam Home settings, in the corner of the home screen. */
+    /** The app's settings, in the corner of the home screen. */
     static Item settings() {
         return shortcut(SETTINGS, "settings", Ui.tr("Ajustes", "Settings"), "settings");
     }
@@ -376,7 +376,7 @@ final class HomeApps {
         synchronized (HomeApps.class) {
             TILES.keySet().removeIf(k -> k.contains(".") && !seen.contains(k));
         }
-        items.add(special(c, SETTINGS, "freemytv-settings", "Beam Home", "mark"));
+        items.add(special(c, SETTINGS, "freemytv-settings", Config.APP_NAME, "mark"));
         return items;
     }
 
