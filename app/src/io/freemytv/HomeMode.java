@@ -396,6 +396,7 @@ final class HomeMode {
             adb.shell(pm + "CHANGE_CONFIGURATION");
             adb.shell(pm + "ACCESS_FINE_LOCATION");
             adb.shell("appops set " + PKG + " WRITE_SETTINGS " + (on ? "allow" : "default"));
+            adb.shell("appops write-settings");   // app-ops reach the disk lazily: a restart soon after would drop the set
         } catch (IOException e) {
             AppLog.w("XGIMI permissions: " + e.getMessage());
         }
