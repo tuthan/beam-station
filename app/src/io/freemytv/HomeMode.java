@@ -327,6 +327,7 @@ final class HomeMode {
                     AppLog.w("could not turn off " + pkg + ": " + out.trim());
                 }
             }
+            protectedBackOn(adb, disabled, present);
             record(adb, disabled);
             s = state(c);
             s.put("mode", FREE).put("since", System.currentTimeMillis()).put("homeReverted", false)
@@ -545,6 +546,7 @@ final class HomeMode {
                 List<String> keptOff = stringList(s, "keptOff");
                 Set<String> ownPkgs = switchTime(home, dream);
                 Map<String, Boolean> inputs = new HashMap<>();
+                protectedBackOn(adb, disabled, present);
                 for (String pkg : sorted(wanted)) {
                     if (PROTECTED.contains(pkg) || !present.contains(pkg) || owners.contains(pkg)) continue;
                     if (disabledNow.contains(pkg)) {
@@ -583,6 +585,29 @@ final class HomeMode {
                         : Ui.tr("Desliguei o que faltava: ", "Turned off what was missing: ")) + String.join(", ", fixed) + ".");
             } else if (updated) {
                 notice(app, Ui.tr("A TV foi atualizada; o Free My TV continua igual.", "The TV was updated; Free My TV is still on."));
+            }
+        }
+    }
+
+    /**
+     * Turned off by an older version, protected since (TCL's MagiConnect): back on. After a reinstall only the record
+     * in the TV's settings knows about it, so both lists count. One that won't come back stays in `disabled`, and so in
+     * the record, for Original and the next check.
+     */
+    private static void protectedBackOn(Adb adb, Set<String> disabled, Set<String> present) throws IOException {
+        Set<String> ours = new HashSet<>(disabled);
+        ours.addAll(recorded(adb));
+        for (String pkg : sorted(ours)) {
+            if (!pkg.matches("[\\w.]+")) {   // it goes into a shell command
+                AppLog.w("turned-off list: skipped an unexpected name " + JSONObject.quote(pkg));
+                continue;
+            }
+            if (!PROTECTED.contains(pkg)) continue;
+            if (adb.shell("pm enable " + pkg).contains("new state: enabled")) {
+                disabled.remove(pkg);
+                AppLog.w("turned back on " + pkg);
+            } else if (present.contains(pkg)) {
+                disabled.add(pkg);
             }
         }
     }
