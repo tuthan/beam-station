@@ -11,8 +11,6 @@ app/assets/backgrounds/dark-*.jpg
 # Build output
 out/
 *.apk
-*.ipk
-*.wgt
 __pycache__/
 
 # macOS
