@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# Builds FreeMyTV.apk without Gradle: aapt2 -> kotlinc -> javac -> R8 -> zipalign -> apksigner.
+# Builds BeamHome.apk (device=xgimi) or StationHome.apk (device=rokid) without Gradle:
+# aapt2 -> kotlinc -> javac -> R8 -> zipalign -> apksigner.
 # Needs a JDK (17+) and the Android SDK command-line tools (build-tools 34+, platform android-34). See README.md.
 set -euo pipefail
 cd "$(dirname "$0")"
@@ -41,6 +42,14 @@ number() {
   [[ "$v" =~ ^-?[0-9]+(\.[0-9]+)?$ ]] || { echo "config.properties: $1 must be a number (got \"$v\")" >&2; exit 1; }
   printf '%s' "$v"
 }
+# The device the build is for: DEVICE from the environment, else device= in config.properties, else xgimi. Its name,
+# icon, banner, mark and backgrounds come from app/devices/$DEVICE.
+DEVICE="${DEVICE:-$(prop device xgimi)}"
+case "$DEVICE" in
+  xgimi) APK=BeamHome.apk ;;
+  rokid) APK=StationHome.apk ;;
+  *) echo "Unknown device \"$DEVICE\": use device=xgimi or device=rokid in config.properties (or DEVICE=...)." >&2; exit 1 ;;
+esac
 LAT="$(number latitude 40.7128)"
 LON="$(number longitude -74.0060)"
 ASSIST=false; [ "$(prop disable_assistant false)" = "true" ] && ASSIST=true
@@ -74,9 +83,11 @@ EOF
 
 # --- Build
 "$BT/aapt2" compile --dir app/res -o out/res.zip
-# Fonts uncompressed: Android reads them straight from the APK.
+"$BT/aapt2" compile --dir "app/devices/$DEVICE/res" -o out/device-res.zip
+# The device's resources on top of the shared ones; fonts uncompressed: Android reads them straight from the APK.
 "$BT/aapt2" link -o out/base.apk -I "$AJ" --manifest app/AndroidManifest.xml --java out/gen out/res.zip \
-  --min-sdk-version 28 --target-sdk-version 33 -A app/assets -0 ttf
+  -R out/device-res.zip --auto-add-overlay --min-sdk-version 28 --target-sdk-version 33 \
+  -A app/assets -A "app/devices/$DEVICE/assets" -0 ttf
 # Windows aapt2 packs assets with backslash separators ("assets/symbols\x.png") and Android
 # cannot find them: the home screen loses its icons and fonts. Rename the zip entries to "/".
 case "$(uname -s 2>/dev/null)" in
@@ -144,5 +155,5 @@ if [ ! -f freemytv.keystore ]; then
   "$KEYTOOL" -genkeypair -keystore freemytv.keystore -alias freemytv -keyalg RSA -keysize 2048 -validity 20000 \
     -storepass freemytv -keypass freemytv -dname "CN=Free My TV" >/dev/null 2>&1
 fi
-"$BT/apksigner$BAT" sign --ks freemytv.keystore --ks-pass pass:freemytv --key-pass pass:freemytv --out FreeMyTV.apk out/aligned.apk
-echo "Built FreeMyTV.apk ($(du -h FreeMyTV.apk | cut -f1)). Install: adb install -r FreeMyTV.apk"
+"$BT/apksigner$BAT" sign --ks freemytv.keystore --ks-pass pass:freemytv --key-pass pass:freemytv --out "$APK" out/aligned.apk
+echo "Built $APK ($(du -h "$APK" | cut -f1)). Install: adb install -r $APK"
