@@ -1,7 +1,7 @@
-# Free My TV: notes for Claude
+# Beam Home and Station Home: notes for Claude
 
 A home screen for Google TV and Android TV that replaces the stock one, plus a settings app that switches between
-Free My TV and the TV's original home screen. A plain Android app in Java and Kotlin (the Java is being converted), built without Gradle by `build.sh`. One tree builds two flavours: **Beam Home** for XGIMI projectors (`device=xgimi`, the default) and **Station Home** for the Rokid Station (`device=rokid`). The name is in all of the UI text (`Config.APP_NAME` in the Java sources, `@string/app_name` in the manifest, the art in `app/devices/<device>`); the package, the log tag and the signing key stay Free My TV's.
+it and the TV's original home screen. A plain Android app in Java and Kotlin (the Java is being converted), built without Gradle by `build.sh`. One tree builds two flavours: **Beam Home** for XGIMI projectors (`device=xgimi`, the default) and **Station Home** for the Rokid Station (`device=rokid`). The name is in all of the UI text (`Config.APP_NAME` in the Java sources, `@string/app_name` in the manifest, the art in `app/devices/<device>`); the package is `io.github.tuthan.beamstation` (code in `app/src/io/github/tuthan/beamstation`), the log tag `BeamStation`, the key `beamstation.keystore`. It began as a fork of Free My TV (`io.freemytv`), which is a separate app to Android: if it is on the device, it goes back to *Original* and is uninstalled before this one is switched on.
 
 The person you're helping may not be technical. Keep it short and friendly, say what you're about to do on their TV
 before you do it, and let them do the taps on the TV.
@@ -25,7 +25,7 @@ before you do it, and let them do the taps on the TV.
    Without a key everything works except the picks and the screensaver photos.
    The same goes for the optional `watchmode_key` (free, watchmode.com; makes picks open the title's page): theirs, secret, only in `config.properties`.
 5. **Build:** `./build.sh` → `BeamHome.apk` (XGIMI), or `DEVICE=rokid ./build.sh` → `StationHome.apk` (Rokid Station;
-   `device=rokid` in `config.properties` does the same). Keep `freemytv.keystore`: updates must be signed with the same key.
+   `device=rokid` in `config.properties` does the same). Keep `beamstation.keystore`: updates must be signed with the same key.
 6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
    allow*. Then `adb install -r BeamHome.apk` (or `StationHome.apk`).
    On a Mac, `adb connect` can fail with `No route to host` while the TV answers (`nc -z <IP> 5555` connects): macOS's
@@ -35,14 +35,14 @@ before you do it, and let them do the taps on the TV.
 7. **Tell them what the switch does** before they make it: the home screen and screensaver change, the stock home
    screen is turned off (never uninstalled; on the Rokid Station nothing is turned off), and *Original* brings it all
    back.
-8. **They switch on the TV:** *Free My TV* → *Home Screen* → *Free My TV*. The app uses the TV's own ADB on
+8. **They switch on the TV:** *Beam Home* → *Home Screen* → *Beam Home* (*Station Home* on the Station). The app uses the TV's own ADB on
    127.0.0.1 with its own key, so the TV asks once more to allow debugging. Don't switch modes from the computer.
    If the TV's Wi-Fi was saved during its first setup, the switch stops before changing anything and asks them to
    forget the network and connect again in Settings (Network & Internet); then the switch goes through. Saved
    networks out of range don't show in Settings: find the ones with `cname=com.google.android.tungsten.setupwraith`
    in `adb shell dumpsys wifi` (each block starts with its `ID:`), and with their OK remove them with
    `adb shell cmd wifi forget-network <id>`.
-9. **Check:** `adb logcat -s FreeMyTV` shows what the switch did.
+9. **Check:** `adb logcat -s BeamStation` shows what the switch did.
 
 ## The two devices
 
@@ -56,11 +56,11 @@ adb shell settings get secure screensaver_components; adb shell settings get sec
 adb shell pm list packages -s     # system apps (-3 for the ones they installed)
 ```
 
-After a change to the switch: build, install, have them switch on the device, read `adb logcat -s FreeMyTV`, then
+After a change to the switch: build, install, have them switch on the device, read `adb logcat -s BeamStation`, then
 have them switch back to *Original* once and confirm everything returned.
 
 XGIMI projectors (China ROM, GMUI): their chooser (`xgimiframeworkui`) opens XGIMI Home whenever it is on, whatever
-the default home, so Free My TV mode turns off `com.xgimi.home` and nothing else (plus `HomeMode.PRIVACY`, only with
+the default home, so Beam Home's mode turns off `com.xgimi.home` and nothing else (plus `HomeMode.PRIVACY`, only with
 `disable_telemetry=true`). Every XGIMI app runs as the shared system UID that also saved the Wi-Fi networks; Android
 keeps those (their creator, `android.uid.system`, matches no package), but don't turn off other XGIMI packages. *TV Settings* opens XGIMI's panel (its `SettingService`).
 Beam Home adds English screens for what XGIMI's Chinese ones do: Wi-Fi, Bluetooth, Picture (`Picture`, the Play 6) and
@@ -68,7 +68,7 @@ Time Zone (`Zones`), and in the drawer focus, keystone, speaker and eco mode (`X
 home screen.
 
 Rokid Station (the Android 11 box for Rokid's AR glasses, Amlogic): its ROM refuses `pm disable-user`, `pm enable`,
-`pm hide` and `pm uninstall` for every system app (`Failure [not support for 0]`), so Free My TV mode turns nothing
+`pm hide` and `pm uninstall` for every system app (`Failure [not support for 0]`), so Station Home's mode turns nothing
 off there and only takes the home screen; Rokid's launcher stays on (HOME stays ours through a glasses replug and a
 reboot). *TV Settings* opens Rokid's Settings. Taking the glasses off puts the box to sleep and drops Wi-Fi and ADB:
 keep them on (or the proximity sensor covered) while you work from the computer. The glasses' 2D/3D, refresh rate,
@@ -80,7 +80,7 @@ The Station runs on a battery: `Power` shows it on the home screen and keeps the
 screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
 
 
-**Uninstalled while in Free My TV mode?** The apps it turned off stay off. Bring them back with
+**Uninstalled while its mode was on?** The apps it turned off stay off. Bring them back with
 `adb shell pm enable <package>` (the `DEBLOAT` list and the stock home screen), then
 `adb shell cmd package set-home-activity <stock home activity>` and
 `adb shell settings put secure screensaver_components <stock screensaver>`.
@@ -97,7 +97,7 @@ screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
   them (each has a `DEVICES` table: name, gradient, mark, background colors).
 - Device code runs only in its own build and on its own device: `HomeMode.XGIMI` and `HomeMode.ROKID` check both
   `Config.DEVICE` and the brand, and everything device-only goes through them (`Xgimi`, `Picture`, `Zones`; `Rokid`,
-  `Power`; `Wifi` and `Bluetooth` for both). On any other TV either build is plain Free My TV. The sky (`Shaders`)
+  `Power`; `Wifi` and `Bluetooth` for both). On any other TV either build is a plain home screen. The sky (`Shaders`)
   follows `Config.DEVICE`: warm for the projector's dark room, near black and cool for the glasses.
 - Never write the app's name in the code: join `Config.APP_NAME` as a constant
   (`"Measuring " + Config.APP_NAME + "…"`), and use the same expression as the case label in `Spanish.java`,
@@ -121,15 +121,14 @@ screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
   size (and the picks use TMDB's w1280), and the shelf logos have a copy at the resting size and one at the focused
   size, so both draw pixel for pixel.
 - `HomeMode` runs every switch as a background job (`ModeJob`) in the main process; the UI is in the `:home`
-  process. `Watchdog` goes back to the stock home screen after 3 crashes in 5 minutes. *Original* also takes an older
-  build's remote buttons service (`RemoteKeyService`) out of `enabled_accessibility_services`, if it is still listed.
+  process. `Watchdog` goes back to the stock home screen after 3 crashes in 5 minutes.
 - After every `appops set` over ADB, run `appops write-settings` as its own shell call: app-ops reach the disk lazily,
   and a restart soon after the `set` drops it.
 - On-screen text: `Ui.tr("pt", "en")`, with the Spanish, German and Russian in `Spanish.java`, `German.java` and
   `Russian.java` (keyed by the English); text built at runtime uses `Ui.tr(pt, en, es)`, and its German and Russian
   come from those files too (patterns for the parts built at runtime). Add them all. Comments in English, short, only where the why
   isn't obvious.
-- Settings come from `config.properties` through the generated `out/gen/io/freemytv/Config.java` (never edit that).
+- Settings come from `config.properties` through the generated `out/gen/io/github/tuthan/beamstation/Config.java` (never edit that).
   What the person changes on the TV (`Prefs`: Home Settings, Shelf) wins over those first values.
 - After any change, `./build.sh` and `DEVICE=rokid ./build.sh` must end with `Built BeamHome.apk` and
   `Built StationHome.apk`.

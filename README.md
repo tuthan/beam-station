@@ -4,7 +4,7 @@
 
 # Beam Home and Station Home
 
-> Two builds of [Free My TV](https://github.com/simbasjungles/free-my-tv) from one tree: **Beam Home** for the XGIMI Play 6 projector (China ROM) and **Station Home** for the Rokid Station (the box for Rokid's AR glasses). The package (`io.freemytv`), the log tag (`FreeMyTV`) and the signing key are the same as Free My TV's, so either one updates over it.
+> Two home screens from one tree, built on [Free My TV](https://github.com/simbasjungles/free-my-tv): **Beam Home** for the XGIMI Play 6 projector (China ROM) and **Station Home** for the Rokid Station (the box for Rokid's AR glasses). Its own app, not an update of Free My TV: package `io.github.tuthan.beamstation`, log tag `BeamStation`, its own signing key. Free My TV (`io.freemytv`), if it's on the device, goes back to *Original* and is removed first.
 
 **A fast, ad-free home screen for the XGIMI Play 6 projector (China ROM) and the Rokid Station.**
 
@@ -22,21 +22,21 @@ Open source. Built with Claude Code. One button to undo.
 - **Light by day, dark by night.** It follows your city's real sunset, the way your phone does.
 - **A screensaver to match.** Full-screen photos of the picks with a big glass clock.
 - **Fast.** Drawn by hand on one Canvas, made for 60 fps on the device's own chip.
-- **Set up on the TV.** Language, your city, temperature, theme, the weather and prices cards, which coins, and the apps on the shelf, in Free My TV's own settings.
+- **Set up on the TV.** Language, your city, temperature, theme, the weather and prices cards, which coins, and the apps on the shelf, in the app's own settings.
 - **Safe.** No root. Nothing is uninstalled. One button brings back the factory home screen.
 
 ## Install
 
-About ten minutes. You need the XGIMI Play 6 or the Rokid Station and a computer on the same Wi-Fi. (On any other Google TV or Android TV, Android 9 or newer, either build runs as plain Free My TV.)
+About ten minutes. You need the XGIMI Play 6 or the Rokid Station and a computer on the same Wi-Fi. (On any other Google TV or Android TV, Android 9 or newer, either build runs as a plain home screen, without the device's extras.)
 
 ### The easy way: an AI assistant
 
 1. **On the device**, write down its IP address. Both already have network ADB on port 5555 (the XGIMI takes any computer without asking; the Station asks once). On another TV, turn on developer mode first: Settings → System → About → press *Android TV OS build* 7 times, then Settings → System → Developer options → turn on **USB debugging**.
 2. **On your computer**, open an AI coding assistant ([Claude Code](https://claude.com/claude-code), Codex or Antigravity) and say:
-   > Install Free My TV (github.com/simbasjungles/free-my-tv) on my TV at 192.168.1.50. I live in Lisbon.
+   > Install Beam Home from this repository on my projector at 192.168.1.50. I live in Lisbon.
 
-   It downloads the code, installs the tools it needs, builds the app and puts it on your TV, and asks before anything important. Swap in your TV's IP and your city.
-3. **On the TV**, open *Free My TV* → *Home Screen* → *Free My TV*, and accept the debugging prompt (tick *Always allow*).
+   It downloads the code, installs the tools it needs, builds the app and puts it on your TV, and asks before anything important. Swap in your device's IP and your city (and Station Home for the Rokid Station).
+3. **On the TV**, open *Beam Home* (*Station Home* on the Station) → *Home Screen* → the same name, and accept the debugging prompt (tick *Always allow*).
 
 ### The manual way
 
@@ -58,7 +58,7 @@ About ten minutes. You need the XGIMI Play 6 or the Rokid Station and a computer
    adb connect 192.168.1.50:5555
    adb install -r BeamHome.apk     # or StationHome.apk
    ```
-5. **On the TV**, open *Free My TV* → *Home Screen* → *Free My TV*.
+5. **On the TV**, open *Beam Home* (*Station Home* on the Station) → *Home Screen* → the same name.
 
 ## Two devices, one tree
 
@@ -69,11 +69,11 @@ About ten minutes. You need the XGIMI Play 6 or the Rokid Station and a computer
 | `xgimi` | Beam Home | `BeamHome.apk` | XGIMI projectors (Play 6, China ROM): Wi-Fi, Bluetooth, Picture and Time Zone screens in English; focus, keystone, speaker and eco mode in the drawer; the Play 6's battery on the home screen |
 | `rokid` | Station Home | `StationHome.apk` | The Rokid Station: a Glasses page (2D/3D, refresh rate, picture, speakers, brightness, zoom) and a 2D/3D button; Wi-Fi, Bluetooth and Power screens; a sleep timer; the battery on the home screen |
 
-Each device's parts run only in its own build and on its own device; on any other TV either build is plain Free My TV. Each one's name, icon, banner, settings mark and backgrounds live in `app/devices/<device>/`, drawn by `python3 tools/make_art.py <device>` and `python3 tools/make_backgrounds.py <device>`.
+Each device's parts run only in its own build and on its own device; on any other TV either build is a plain home screen. Each one's name, icon, banner, settings mark and backgrounds live in `app/devices/<device>/`, drawn by `python3 tools/make_art.py <device>` and `python3 tools/make_backgrounds.py <device>`.
 
 ## Settings
 
-The first values come from `config.properties`, created by the first build. Most of them can also be changed on the TV, in *Free My TV* → *Home Settings*, and the TV's choice wins:
+The first values come from `config.properties`, created by the first build. Most of them can also be changed on the TV, in *Beam Home* (*Station Home* on the Station) → *Home Settings*, and the TV's choice wins:
 
 | Key | What it does | Default |
 |---|---|---|
@@ -91,7 +91,7 @@ The first values come from `config.properties`, created by the first build. Most
 | `disable_assistant` | Also turn off Google Assistant | `false` |
 | `disable_telemetry` | XGIMI projectors: also turn off XGIMI's reporting apps | `false` |
 
-Changed something? Run `./build.sh` and install again. Keep `freemytv.keystore`: updates are signed with it.
+Changed something? Run `./build.sh` and install again. Keep `beamstation.keystore` (made by the first build): updates are signed with it.
 
 ### The TMDB key
 
@@ -103,9 +103,9 @@ With a free [Watchmode](https://api.watchmode.com/) key (`watchmode_key=` in `co
 
 ## Going back
 
-On the TV: *Free My TV* → *Home Screen* → *Original*. The factory home screen, screensaver and every app come back exactly as they were. If the new home screen ever crashes three times in five minutes, it switches back by itself.
+On the TV: *Beam Home* (*Station Home* on the Station) → *Home Screen* → *Original*. The factory home screen, screensaver and every app come back exactly as they were. If the new home screen ever crashes three times in five minutes, it switches back by itself.
 
-To remove it for good, switch to *Original* first, then uninstall *Free My TV* (Settings → Apps). Uninstalled it while it was on? Install it again and pick *Original*: the list of what it turned off is kept in the TV's settings, so everything comes back.
+To remove it for good, switch to *Original* first, then uninstall the app (Settings → Apps). Uninstalled it while it was on? Install it again and pick *Original*: the list of what it turned off is kept in the TV's settings, so everything comes back.
 
 ## What it changes
 
@@ -136,19 +136,19 @@ It's your code, and Claude Code finds its way around it. Try:
 
 | File | What it is |
 |---|---|
-| [`HomeView.java`](app/src/io/freemytv/HomeView.java) | The home screen |
-| [`HomeMode.java`](app/src/io/freemytv/HomeMode.java) | Switching between Free My TV and Original |
-| [`Adb.java`](app/src/io/freemytv/Adb.java) | The TV's own ADB, from inside the TV |
-| [`Recs.java`](app/src/io/freemytv/Recs.java) | The picks (TMDB) |
-| [`HomeData.java`](app/src/io/freemytv/HomeData.java) | Weather and prices |
-| [`HomeApps.java`](app/src/io/freemytv/HomeApps.java) | The shelf, inputs and All Apps |
-| [`DreamView.java`](app/src/io/freemytv/DreamView.java) | The screensaver |
-| [`SettingsActivity.java`](app/src/io/freemytv/SettingsActivity.java) | The settings screen (the app's icon) |
-| [`Prefs.java`](app/src/io/freemytv/Prefs.java) | Settings changed on the TV |
-| [`Watchdog.java`](app/src/io/freemytv/Watchdog.java) | The safety net |
-| [`Xgimi.java`](app/src/io/freemytv/Xgimi.java) | XGIMI projectors: focus, keystone, speaker, eco, battery, language |
-| [`Rokid.java`](app/src/io/freemytv/Rokid.java) | The Rokid glasses' display service |
-| [`Power.java`](app/src/io/freemytv/Power.java) | The Rokid Station's battery, timeouts and sleep timer |
+| [`HomeView.java`](app/src/io/github/tuthan/beamstation/HomeView.java) | The home screen |
+| [`HomeMode.java`](app/src/io/github/tuthan/beamstation/HomeMode.java) | Switching between the app's home screen and Original |
+| [`Adb.java`](app/src/io/github/tuthan/beamstation/Adb.java) | The TV's own ADB, from inside the TV |
+| [`Recs.java`](app/src/io/github/tuthan/beamstation/Recs.java) | The picks (TMDB) |
+| [`HomeData.java`](app/src/io/github/tuthan/beamstation/HomeData.java) | Weather and prices |
+| [`HomeApps.java`](app/src/io/github/tuthan/beamstation/HomeApps.java) | The shelf, inputs and All Apps |
+| [`DreamView.java`](app/src/io/github/tuthan/beamstation/DreamView.java) | The screensaver |
+| [`SettingsActivity.java`](app/src/io/github/tuthan/beamstation/SettingsActivity.java) | The settings screen (the app's icon) |
+| [`Prefs.kt`](app/src/io/github/tuthan/beamstation/Prefs.kt) | Settings changed on the TV |
+| [`Watchdog.kt`](app/src/io/github/tuthan/beamstation/Watchdog.kt) | The safety net |
+| [`Xgimi.java`](app/src/io/github/tuthan/beamstation/Xgimi.java) | XGIMI projectors: focus, keystone, speaker, eco, battery, language |
+| [`Rokid.java`](app/src/io/github/tuthan/beamstation/Rokid.java) | The Rokid glasses' display service |
+| [`Power.kt`](app/src/io/github/tuthan/beamstation/Power.kt) | The Rokid Station's battery, timeouts and sleep timer |
 
 ## Privacy
 
@@ -156,7 +156,7 @@ No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with 
 
 ## Credits
 
-- Built with [Claude Code](https://claude.com/claude-code).
+- Built on [Free My TV](https://github.com/simbasjungles/free-my-tv) (MIT), with [Claude Code](https://claude.com/claude-code).
 - This product uses the TMDB API but is not endorsed or certified by [TMDB](https://www.themoviedb.org/).
 - Links to the titles in the streaming apps by [Watchmode](https://api.watchmode.com/).
 - Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Prices from the [Binance](https://www.binance.com/) public API.
