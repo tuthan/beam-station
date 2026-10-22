@@ -231,11 +231,11 @@ internal class Backdrop private constructor(
                 if (b !== full) b.recycle()
                 b = half
             }
-            val small = Bitmap.createScaledBitmap(b, w, h, true)
-            if (b !== full) b.recycle()
+            val small = Bitmap.createScaledBitmap(b, w, h, true)   // b itself when it already has that size
+            if (b !== full && b !== small) b.recycle()
             val px = IntArray(w * h)
             small.getPixels(px, 0, w, 0, 0, w, h)
-            small.recycle()
+            if (small !== full) small.recycle()   // never the caller's bitmap
             val tmp = IntArray(px.size)
             for (pass in 0 until passes) {
                 box(px, tmp, w, h, radius, true)

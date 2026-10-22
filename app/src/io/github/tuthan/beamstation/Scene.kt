@@ -145,10 +145,10 @@ internal class Scene(private val withGlass: Boolean) {
     /** Photo transition: both photos in the glass, blended by setGlassMix (0 = the first one). */
     fun setGlassImages(from: IntArray?, to: IntArray?) {
         imageGlass = true
+        val liquid = liquid ?: return   // only the liquid shader (Android 13+) reads them: nothing to fill without it
         val a = fill(glassA, from)
         glassA = a
         if (to != null) glassB = fill(glassB, to)
-        val liquid = liquid ?: return
         val shaderA = linear(a)
         glassShaderA = shaderA
         liquid.setInputShader("imageA", shaderA)
