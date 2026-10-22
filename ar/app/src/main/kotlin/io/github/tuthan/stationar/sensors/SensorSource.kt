@@ -26,7 +26,10 @@ class SensorSource(private val sensors: SensorManager) : SensorEventListener {
         @JvmField var gx = 0f
         @JvmField var gy = 0f
         @JvmField var gz = 0f
-        /** SensorEvent.timestamp of the rotation sample (elapsedRealtimeNanos' clock). */
+        /**
+         * When the rotation sample arrived (elapsedRealtimeNanos). Not SensorEvent.timestamp: Rokid's HAL stamps
+         * events with the glasses' own clock (about 65 s against the Station's 89,500 s on 2026-10-22).
+         */
         @JvmField var timeNs = 0L
         /** Rotation samples so far; 0 until the first arrives. */
         @JvmField var count = 0L
@@ -88,7 +91,7 @@ class SensorSource(private val sensors: SensorManager) : SensorEventListener {
                 latest.y = v[1]
                 latest.z = v[2]
                 latest.w = if (v.size > 3) v[3] else 0f
-                latest.timeNs = e.timestamp
+                latest.timeNs = SystemClock.elapsedRealtimeNanos()
                 latest.count++
             }
         }
@@ -100,7 +103,7 @@ class SensorSource(private val sensors: SensorManager) : SensorEventListener {
         const val ROTATION_NAME = "Rokid Glass Game RotationVector"
         const val GYROSCOPE_NAME = "Rokid Glass Gyroscope"
 
-        /** How old a sample is now, in seconds (sensor timestamps run on elapsedRealtimeNanos). */
+        /** How old a sample is now, in seconds, from its arrival. */
         fun ageSeconds(timeNs: Long): Float = ((SystemClock.elapsedRealtimeNanos() - timeNs) / 1e9).toFloat()
     }
 }

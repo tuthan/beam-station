@@ -36,6 +36,11 @@ class VirtualDisplaySource(
 
     @Synchronized
     override fun onSurface(surface: Surface) {
+        display?.let {
+            // A new Surface after the GL context was lost: the same display (and app) draws into it from now on.
+            it.surface = surface
+            return
+        }
         val dm = context.getSystemService(DisplayManager::class.java)
         val vd = dm.createVirtualDisplay("stationar-$name", WIDTH, HEIGHT, DPI, surface, FLAGS)
         display = vd

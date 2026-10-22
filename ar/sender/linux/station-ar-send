@@ -387,13 +387,34 @@ def cmd_run(args):
     return 0
 
 
-# MARK: - discover (mDNS, one question from an ephemeral port: answers come back to it directly)
+# MARK: - discover (mDNS: a question to the group, answers read from the group on port 5353 for a few seconds;
+# firewalls such as ufw let multicast mDNS in but drop a unicast answer to an ephemeral port)
 
 
-def mdns_query(name, qtype=12):
+def mdns_query(name, qtype=12, unicast=False):
     header = struct.pack("!HHHHHH", 0, 0, 1, 0, 0, 0)
     q = b"".join(bytes([len(p)]) + p.encode() for p in name.rstrip(".").split(".")) + b"\0"
-    return header + q + struct.pack("!HH", qtype, 0x8001)  # QU: answer by unicast
+    return header + q + struct.pack("!HH", qtype, 0x8001 if unicast else 0x0001)
+
+
+def mdns_socket():
+    """A socket that receives the group's answers (port 5353, shared), or, if that port can't be had, an ephemeral
+    one that asks for unicast answers. Receive-only: it never answers anyone's questions."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    if hasattr(socket, "SO_REUSEPORT"):
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    try:
+        s.bind(("", 5353))
+        s.setsockopt(socket.IPPROTO_IP, socket.IP_ADD_MEMBERSHIP,
+                     struct.pack("4s4s", socket.inet_aton("224.0.0.251"), socket.inet_aton("0.0.0.0")))
+        unicast = False
+    except OSError:
+        s.close()
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+        unicast = True
+    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
+    return s, unicast
 
 
 def read_name(data, off):
@@ -447,9 +468,8 @@ def parse_records(data):
 
 def discover(wait=2.0):
     """[(name, ip, port, fingerprint start)] for each Station with AR open."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    s, unicast = mdns_socket()
     s.settimeout(0.3)
-    s.setsockopt(socket.IPPROTO_IP, socket.IP_MULTICAST_TTL, 255)
     found = {}
     try:
         end = time.monotonic() + wait
@@ -457,7 +477,7 @@ def discover(wait=2.0):
         records = []
         while time.monotonic() < end:
             if time.monotonic() >= nxt:
-                s.sendto(mdns_query(SERVICE), ("224.0.0.251", 5353))
+                s.sendto(mdns_query(SERVICE, unicast=unicast), ("224.0.0.251", 5353))
                 nxt = time.monotonic() + 0.7
             try:
                 data, addr = s.recvfrom(9000)

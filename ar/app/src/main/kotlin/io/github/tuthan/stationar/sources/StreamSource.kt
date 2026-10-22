@@ -23,12 +23,20 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
     private val lock = Object()
     private var current: StreamServer.Connection? = null
     private var playing: Thread? = null
+    /** The Surface the decoder draws into while a stream plays. */
+    @Volatile private var decoding: Surface? = null
 
     /** Access units dropped (waiting for a key frame, or too big), since the last log line. */
     @Volatile private var droppedUnits = 0
 
     override fun onSurface(surface: Surface) {
-        synchronized(lock) { lock.notifyAll() }
+        synchronized(lock) {
+            // A new Surface after the GL context was lost: the decoder's is gone, so the stream ends and the laptop,
+            // reconnecting, starts again into this one.
+            val old = decoding
+            if (old != null && old !== surface) current?.close()
+            lock.notifyAll()
+        }
     }
 
     override fun onSurfaceGone() {
@@ -85,6 +93,7 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
             }
             c.configure(f, surface, null, 0)
             c.start()
+            decoding = surface
             label = laptop
             drain = Thread({ drain(c) }, "stationar-drain").apply { start() }
             conn.answer("OK")
@@ -97,6 +106,7 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
             // MediaCodec.CodecException, IllegalStateException: a stream the decoder can't take, or a Surface gone.
             AppLog.w("$name: decoder stopped", e)
         } finally {
+            decoding = null
             drain?.interrupt()
             try {
                 codec?.stop()
