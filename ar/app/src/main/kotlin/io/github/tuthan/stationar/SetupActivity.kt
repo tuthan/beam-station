@@ -17,6 +17,8 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import io.github.tuthan.stationar.adb.AdbClient
+import io.github.tuthan.stationar.apps.AppScreens
 import io.github.tuthan.stationar.core.pose.AxisCalibration
 import io.github.tuthan.stationar.core.pose.HeadPose
 import io.github.tuthan.stationar.glasses.GlassesSession
@@ -36,6 +38,7 @@ class SetupActivity : Activity() {
     private lateinit var status: TextView
     private lateinit var tracking: TextView
     private lateinit var laptops: TextView
+    private lateinit var appsLine: TextView
     private val sample = SensorSource.Sample()
     private var pose = HeadPose()
     private var lastCount = 0L
@@ -48,8 +51,11 @@ class SetupActivity : Activity() {
         super.onCreate(savedInstanceState)
         sensors = SensorSource(getSystemService(SensorManager::class.java))
         val glasses = GlassesSession(this)
-        // A crash in AR may have left the glasses at AR's refresh rate.
-        work.execute { glasses.restoreLeftover() }
+        // A crash in AR may have left the glasses at AR's refresh rate, or the key filter switched on.
+        work.execute {
+            glasses.restoreLeftover()
+            AppScreens.cleanLeftover(this)
+        }
         setContentView(build())
     }
 
@@ -67,12 +73,16 @@ class SetupActivity : Activity() {
         column.addView(tracking)
         laptops = text("", 18f, Color.rgb(220, 230, 235)).also { it.setPadding(0, dp(16), 0, 0) }
         column.addView(laptops)
+        appsLine = text("App screens use the Station's own USB debugging: allow it once, here or the first time you " +
+            "open an app in AR.", 18f, Color.rgb(220, 230, 235)).also { it.setPadding(0, dp(16), 0, 0) }
+        column.addView(appsLine)
         val buttons = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             setPadding(0, dp(28), 0, 0)
         }
         val open = button("Open AR") { startActivity(Intent(this, ArActivity::class.java)) }
         buttons.addView(open)
+        buttons.addView(button("Allow app screens") { allowAdb() })
         column.addView(buttons)
         open.requestFocus()
         (open.background as GradientDrawable).setColor(Color.rgb(20, 120, 112))
@@ -160,6 +170,22 @@ class SetupActivity : Activity() {
         tracking.text = String.format(Locale.US,
             "Head tracking: %.0f samples/s\nyaw %6.1f°  pitch %6.1f°  roll %6.1f°\ndrift since start %.2f° in %.1f min (%.2f°/min)",
             rate, yaw, pose.pitchDegrees(), pose.rollDegrees(), drift, minutes, if (minutes > 0.05f) drift / minutes else 0f)
+    }
+
+    /** Connects to the Station's own ADB once, so it asks "Allow USB debugging?" for Station AR's key now. */
+    private fun allowAdb() {
+        appsLine.text = "Connecting…"
+        work.execute {
+            val result = try {
+                AdbClient.connect(this, 60_000) {
+                    main.post { appsLine.text = "On the screen: tick \"Always allow from this computer\", then OK." }
+                }.close()
+                "App screens: ready (USB debugging allowed for Station AR)."
+            } catch (e: Exception) {
+                "App screens: not allowed (${e.message})."
+            }
+            main.post { appsLine.text = result }
+        }
     }
 
     private fun isRokid() = Build.BRAND.equals("Rokid", ignoreCase = true) && sensors.available

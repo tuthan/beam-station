@@ -16,9 +16,16 @@ glasses back as they were, in 2D.
 | Key | In AR |
 | --- | --- |
 | OK (held) | Re-centre: what you look at becomes straight ahead |
-| OK, Menu | The panel: layouts, apps, the laptop, size, refresh rate, calibration, *Leave AR* |
+| OK, Menu | The panel: layouts, apps, size, refresh rate, calibration, *Leave AR* |
 | D-pad | In the panel: moves. Otherwise left and right nudge the screen you look at by 5°. Without glasses: turns the view |
 | Back | Closes the panel, or leaves AR |
+| Back (held) | The screen menu for the screen you look at: move it, close it |
+
+**Apps in screens:** pick one under *Apps* in the panel (at most two at a time). When you look at an app's screen,
+the remote drives the app: the D-pad, OK and Back are its, while Menu, held OK and held Back stay AR's. The first
+time, the Station asks to allow USB debugging for Station AR (tick *Always allow*), since app screens need its shell
+helper; *Allow app screens* on the setup screen does it ahead of time. Apps with protected video (Netflix and the like)
+and YouTube's TV app play only full-screen, outside AR.
 
 **Laptop monitors:** with AR open, run `sender/linux/station-ar-send pair <Station address>` once on the laptop
 (check the key, type the PIN the glasses show), then `station-ar-send run`. Each monitor appears as a screen; see

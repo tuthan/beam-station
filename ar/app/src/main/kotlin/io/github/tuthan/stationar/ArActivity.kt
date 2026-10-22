@@ -11,6 +11,9 @@ import android.os.Handler
 import android.os.Looper
 import android.view.KeyEvent
 import android.view.WindowManager
+import io.github.tuthan.stationar.apps.AppScreens
+import io.github.tuthan.stationar.core.compat.AppCompat
+import io.github.tuthan.stationar.core.keys.KeyFilter
 import io.github.tuthan.stationar.core.math.Quat
 import io.github.tuthan.stationar.core.pose.AxisCalibration
 import io.github.tuthan.stationar.core.scene.Layout
@@ -44,7 +47,7 @@ import java.util.concurrent.atomic.AtomicReference
  * anything that stops it) ends AR: everything is released, the receiver's port closes, and the glasses go back to
  * their refresh rate, in 2D.
  */
-class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
+class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScreens.Listener {
     private lateinit var settings: Settings
     private lateinit var sensors: SensorSource
     private lateinit var renderer: Renderer
@@ -72,6 +75,12 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
     /** Streams whose screen you put away (a preset without them): they're refused until a layout shows them again. */
     private val dismissed = HashSet<String>()
 
+    // Android apps in screens, and the remote following the gaze.
+    private lateinit var apps: AppScreens
+    private var appLine: String? = null
+    /** The screen the screen menu (held Back) is for. */
+    private var menuScreen = -1
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -79,6 +88,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
         sensors = SensorSource(getSystemService(SensorManager::class.java))
         glasses = GlassesSession(this)
         advertiser = Advertiser(this)
+        apps = AppScreens(this, this)
         renderer = Renderer(sensors, settings.axes ?: AxisCalibration.DEFAULT, this)
         renderer.pose.predictSeconds = settings.predictMs / 1000f
         glView = GLSurfaceView(this).apply {
@@ -110,6 +120,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
     private fun sourceFor(name: String): Source? = when {
         name == ScreenSpec.CARD -> TestCardSource(sensors.available && GlassesSession.plugged(this))
         name in STREAMS -> stream(name)
+        name.startsWith("app:") -> apps.source(name)
         else -> null
     }
 
@@ -142,6 +153,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
     override fun onDestroy() {
         super.onDestroy()
         leave()
+        // If the GL thread ended before it released the scene, the apps' tasks and displays still go.
+        apps.close()
         work.shutdown()
     }
 
@@ -154,6 +167,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
             val last = renderer.currentLayout()
             work.execute { settings.lastLayout = last }
             renderer.release()
+            apps.close()
         }
         work.execute {
             advertiser.stop()
@@ -170,9 +184,24 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
         main.post {
             focusedIndex = index
             updateHud()
+            apps.gazeOn(layout.screens.getOrNull(index)?.source)
         }
     }
 
+    // MARK: - AppScreens.Listener (main thread)
+
+    override fun onAppStatus(text: String?) {
+        appLine = text
+        updateHud()
+    }
+
+    override fun onKeyAction(action: KeyFilter.Action) {
+        when (action) {
+            KeyFilter.Action.AR_MENU -> togglePanel()
+            KeyFilter.Action.RECENTRE -> recentre()
+            KeyFilter.Action.SCREEN_MENU -> openScreenMenu()
+        }
+    }
 
     override fun onTracking(tracking: Boolean) {
         main.post {
@@ -254,7 +283,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent): Boolean {
         when (keyCode) {
-            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER, KeyEvent.KEYCODE_BACK -> {
                 event.startTracking()
                 return true
             }
@@ -275,6 +304,10 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
             recentre()
             return true
         }
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (!panelOpen) openScreenMenu()
+            return true
+        }
         return super.onKeyLongPress(keyCode, event)
     }
 
@@ -285,7 +318,9 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
                 return true
             }
             KeyEvent.KEYCODE_BACK -> {
-                if (panelOpen) closePanel() else leave()
+                if (event.isTracking && !event.isCanceled) {
+                    if (panelOpen) closePanel() else leave()
+                }
                 return true
             }
         }
@@ -345,14 +380,37 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
     private fun openPanel() {
         panelHeader = "Station AR"
         panel.set(panelSections())
+        showPanelNow()
+    }
+
+    /** The panel is up: it has the remote (AR's display keeps the focus) until it closes. */
+    private fun showPanelNow() {
         panelOpen = true
+        apps.holdForPanel(true)
         drawPanel()
     }
 
     private fun closePanel() {
         panelOpen = false
         calibrating = false
+        menuScreen = -1
+        apps.holdForPanel(false)
         glView.queueEvent { renderer.hidePanel() }
+    }
+
+    /** Held Back: what to do with the screen you look at (move it, close it). */
+    private fun openScreenMenu() {
+        val i = focusedIndex
+        val spec = layout.screens.getOrNull(i) ?: return
+        menuScreen = i
+        panelHeader = StationAr.screenLabel(spec.source)
+        panel.set(listOf("" to listOf(
+            PanelLayout.Item("screen-left", "Move left"),
+            PanelLayout.Item("screen-right", "Move right"),
+            PanelLayout.Item("screen-close", "Close"),
+            PanelLayout.Item("screen-done", "Done"),
+        )))
+        showPanelNow()
     }
 
     private fun drawPanel() {
@@ -375,7 +433,25 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
             PanelLayout.Item("predict", "Prediction", "${settings.predictMs} ms"),
             PanelLayout.Item("calibrate", "Calibrate", if (settings.axes == null) "not yet" else ""),
         )
-        return listOf("Layout" to layoutItems, "View" to view, "" to listOf(PanelLayout.Item("leave", "Leave AR")))
+        return listOf("Layout" to layoutItems, "Apps" to appItems(), "View" to view,
+            "" to listOf(PanelLayout.Item("leave", "Leave AR")))
+    }
+
+    /** The installed apps, the ones that work in a screen first, each with how it does there. */
+    private fun appItems(): List<PanelLayout.Item> {
+        val list = AppScreens.launchable(this)
+            .sortedWith(compareBy({ AppCompat.rank(it.first) }, { it.second.lowercase(Locale.ROOT) }))
+            .take(MAX_LISTED_APPS)
+        return list.map { (pkg, label) ->
+            StationAr.appNames[pkg] = label
+            val detail = when (AppCompat.of(pkg).status) {
+                AppCompat.Status.WORKS -> "works"
+                AppCompat.Status.UNTESTED -> "not tried"
+                AppCompat.Status.PARTLY -> "partly"
+                AppCompat.Status.NO_VIDEO, AppCompat.Status.DRM -> "full-screen only"
+            }
+            PanelLayout.Item("app:$pkg", label, detail)
+        }
     }
 
     private fun percent(f: Float) = "${(f * 100).toInt()} %"
@@ -418,6 +494,64 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
             }
             id == "calibrate" -> startCalibration()
             id == "leave" -> leave()
+            id.startsWith("app:") -> openApp(id.removePrefix("app:"))
+            id == "screen-left" || id == "screen-right" -> {
+                val i = menuScreen
+                val d = if (id == "screen-left") -SCREEN_STEP else SCREEN_STEP
+                if (i >= 0) glView.queueEvent { renderer.nudge(i, d, 0f) }
+            }
+            id == "screen-close" -> {
+                closeScreen(menuScreen)
+                closePanel()
+            }
+            id == "screen-done" -> closePanel()
+        }
+    }
+
+    /** Opens an app in a screen where you look (or says why not). */
+    private fun openApp(pkg: String) {
+        val compat = AppCompat.of(pkg)
+        val label = StationAr.appNames[pkg] ?: pkg
+        if (compat.status == AppCompat.Status.DRM || compat.status == AppCompat.Status.NO_VIDEO) {
+            panelHeader = "$label: ${compat.note}"
+            drawPanel()
+            return
+        }
+        if (layout.screens.count { it.kind == "app" } >= MAX_APP_SCREENS && layout.indexOf("app:$pkg") < 0) {
+            panelHeader = "Two app screens at most: hold Back on one to close it"
+            drawPanel()
+            return
+        }
+        closePanel()
+        glView.queueEvent {
+            val placed = Presets.placeApp(renderer.currentLayout(), "app:$pkg", renderer.gazeYaw)
+            if (placed == null) {
+                main.post { onAppStatus("No room for another screen") }
+                return@queueEvent
+            }
+            renderer.setLayout(placed) { name -> sourceFor(name) }
+            renderer.focusNow(placed.indexOf("app:$pkg"))
+            main.post { layout = placed }
+            AppLog.i("AR: opened $pkg in a screen")
+        }
+    }
+
+    /** Takes screen `index` away (an app's closes; a laptop stream stays away until a layout shows it again). */
+    private fun closeScreen(index: Int) {
+        if (index < 0) return
+        glView.queueEvent {
+            val now = renderer.currentLayout()
+            if (index !in now.screens.indices) return@queueEvent
+            val gone = now.screens.removeAt(index).source
+            if (now.screens.isEmpty()) now.screens.addAll(Presets.welcome().screens)
+            renderer.setLayout(now) { name -> sourceFor(name) }
+            main.post {
+                layout = now
+                val stream = if (gone.startsWith("wide:")) "wide" else gone
+                if (stream in STREAMS && streams[stream]?.connected == true) dismissed.add(stream)
+                updateHud()
+            }
+            AppLog.i("AR: closed the $gone screen")
         }
     }
 
@@ -435,8 +569,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
         calibration = null
         panelHeader = "Calibrate: look straight ahead, then press OK"
         panel.set(listOf("" to listOf(PanelLayout.Item("calibrate-ok", "OK", "looking ahead"))))
-        panelOpen = true
-        drawPanel()
+        showPanelNow()
     }
 
     private fun calibrationStep() {
@@ -480,7 +613,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
     private val clock = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     private fun updateHud() {
-        pairingLine?.let {
+        (pairingLine ?: appLine)?.let {
             glView.queueEvent { renderer.setHud(it) }
             return
         }
@@ -509,6 +642,9 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener {
         const val EXTRA_PACKAGE = "package"
         const val EXTRA_LAPTOP = "laptop"
         private val STREAMS = listOf("laptop:0", "laptop:1", "wide")
+        private const val MAX_APP_SCREENS = 2
+        private const val MAX_LISTED_APPS = 12
+        private const val SCREEN_STEP = 10f
         private const val TURN_STEP = 5f
         private const val NUDGE_STEP = 5f
     }
