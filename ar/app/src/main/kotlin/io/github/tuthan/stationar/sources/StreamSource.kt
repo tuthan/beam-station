@@ -44,6 +44,11 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
     /** True while a laptop streams to it. */
     val connected: Boolean get() = synchronized(lock) { current != null }
 
+    /** Ends the stream now (its laptop was forgotten); the screen keeps its last picture. */
+    fun disconnect() {
+        synchronized(lock) { current }?.close()
+    }
+
     /**
      * Plays a stream until it ends (the laptop stopped, the network dropped, another connection replaced it, or the
      * screen went away). Answers OK first, or CLOSED when the screen has no Surface.

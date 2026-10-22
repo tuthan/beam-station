@@ -11,11 +11,12 @@ component io.github.tuthan.stationar/.EnterAr   (an exported alias of ArActivity
 
 | Extra | Type | Meaning |
 | --- | --- | --- |
-| `preset` | String | `cinema`, `desk`, `desk-app` or `last` (the default): the layout AR opens in |
-| `package` | String | An installed app to open in a screen as soon as AR is up (Phase 04) |
-| `laptop` | Boolean | Wait for the laptop sender and put its first monitor in front (Phase 03) |
+| `preset` | String | `cinema`, `desk`, `desk-app` or `last`: the layout AR opens in (default: the *Start in* setting, itself `last` unless changed) |
+| `package` | String | An installed app to open in a screen as soon as AR is up (where you look; not for apps that only play full-screen) |
+| `laptop` | Boolean | Without `preset`: open with one laptop monitor straight ahead, waiting for `station-ar-send` |
 
 - Unknown extras and unknown values are ignored; AR opens in the last layout.
+- Sent while AR is open already, `preset` switches the layout and `package` opens the app; `laptop` is ignored.
 - **Back and Home always lead to Station Home**, the home screen. Nothing in this contract changes that: Station AR
   never claims HOME and never asks the home screen for anything.
 - Leaving AR leaves the glasses in **2D** at the refresh rate they had; Station Home puts 2D back on every resume

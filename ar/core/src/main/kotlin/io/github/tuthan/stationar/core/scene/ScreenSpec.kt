@@ -26,6 +26,10 @@ class ScreenSpec(
     /** What follows the kind: the monitor number, the half, or the package. */
     val target: String get() = source.substringAfter(':', "")
 
+    /** The part of its source's picture it shows, across: a wide stream's left or right half, else all of it. */
+    val u0: Float get() = if (source == "wide:1") 0.5f else 0f
+    val u1: Float get() = if (source == "wide:0") 0.5f else 1f
+
     override fun equals(other: Any?) = other is ScreenSpec && other.source == source && other.yaw == yaw &&
         other.pitch == pitch && other.width == width && other.aspect == aspect && other.curved == curved
 

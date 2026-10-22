@@ -106,14 +106,30 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             renderer.setLayout(layout) { name -> sourceFor(name) }
         }
         AppLog.i("AR: open, layout ${layout.encode()}")
+        intent?.getStringExtra(EXTRA_PACKAGE)?.let { pkg -> main.post { openApp(pkg) } }
         work.execute { startReceiver() }
     }
 
-    /** The layout to open in: the intent's preset, else the setting, else the last one, else the welcome card. */
+    /**
+     * The layout to open in: the intent's preset; else, asked to wait for the laptop, its first monitor straight
+     * ahead; else the setting, the last one, or the welcome card.
+     */
     private fun startLayout(intent: Intent?): Layout {
         val asked = intent?.getStringExtra(EXTRA_PRESET)
+        if (asked == null && intent?.getBooleanExtra(EXTRA_LAPTOP, false) == true) {
+            return Layout(mutableListOf(ScreenSpec("laptop:0", 0f, 0f, Presets.ONE_TO_ONE)))
+        }
         val preset = if (asked != null && (asked in Presets.NAMES || asked == Presets.LAST)) asked else settings.startPreset
         return (if (preset == Presets.LAST) settings.lastLayout else Presets.layout(preset)) ?: Presets.welcome()
+    }
+
+    /** Station Home's AR Mode while AR is open already: a preset or an app it asks for. */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        intent.getStringExtra(EXTRA_PRESET)?.let { preset ->
+            if (preset in Presets.NAMES) act("preset:$preset")
+        }
+        intent.getStringExtra(EXTRA_PACKAGE)?.let { openApp(it) }
     }
 
     /** Makes the source a screen asks for (GL thread, from Renderer.setLayout). */
@@ -432,9 +448,16 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             PanelLayout.Item("refresh", if (settings.refresh60) "60 Hz" else "120 Hz", "in AR"),
             PanelLayout.Item("predict", "Prediction", "${settings.predictMs} ms"),
             PanelLayout.Item("calibrate", "Calibrate", if (settings.axes == null) "not yet" else ""),
+            PanelLayout.Item("start", "Start in", Presets.label(settings.startPreset).let { if (settings.startPreset == Presets.LAST) "last layout" else it }),
         )
-        return listOf("Layout" to layoutItems, "Apps" to appItems(), "View" to view,
-            "" to listOf(PanelLayout.Item("leave", "Leave AR")))
+        val laptops = StationAr.pairing(this).laptops().map { name ->
+            val on = streams.values.any { it.connected && it.label == name }
+            PanelLayout.Item("forget:$name", name, if (on) "connected · OK forgets" else "paired · OK forgets")
+        }
+        val sections = arrayListOf("Layout" to layoutItems, "Apps" to appItems(), "View" to view)
+        if (laptops.isNotEmpty()) sections.add("Laptops" to laptops)
+        sections.add("" to listOf(PanelLayout.Item("leave", "Leave AR")))
+        return sections
     }
 
     /** The installed apps, the ones that work in a screen first, each with how it does there. */
@@ -463,7 +486,11 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 closePanel()
             }
             id.startsWith("preset:") -> {
-                val l = Presets.layout(id.removePrefix("preset:")) ?: return
+                // Cinema shows the laptop or app you look at, big; Desk + app keeps your app screen.
+                val focused = layout.screens.getOrNull(focusedIndex)?.source
+                val first = focused?.takeIf { it.startsWith("laptop:") || it.startsWith("app:") } ?: ScreenSpec.CARD
+                val app = layout.screens.firstOrNull { it.kind == "app" }?.source ?: ScreenSpec.CARD
+                val l = Presets.layout(id.removePrefix("preset:"), first, app) ?: return
                 // A laptop streaming to a screen this preset doesn't have stays away until one does.
                 for (name in STREAMS) {
                     if (shows(l, name)) dismissed.remove(name) else if (streams[name]?.connected == true) dismissed.add(name)
@@ -493,6 +520,21 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 drawPanel()
             }
             id == "calibrate" -> startCalibration()
+            id == "start" -> {
+                val order = listOf(Presets.LAST) + Presets.NAMES
+                settings.startPreset = order[(order.indexOf(settings.startPreset) + 1) % order.size]
+                panel.set(panelSections())
+                drawPanel()
+            }
+            id.startsWith("forget:") -> {
+                val name = id.removePrefix("forget:")
+                StationAr.pairing(this).forget(name)
+                for (s in streams.values) if (s.label == name) s.disconnect()
+                AppLog.i("receiver: forgot \"$name\"")
+                panelHeader = "Forgot $name: it pairs again next time"
+                panel.set(panelSections())
+                drawPanel()
+            }
             id == "leave" -> leave()
             id.startsWith("app:") -> openApp(id.removePrefix("app:"))
             id == "screen-left" || id == "screen-right" -> {
@@ -621,6 +663,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         parts.add(clock.format(Date()))
         battery()?.let { parts.add(it) }
         if (!tracking) parts.add("no head tracking")
+        val laptop = streams.values.firstOrNull { it.connected }?.label
+        if (laptop != null) parts.add(laptop)
         val spec = layout.screens.getOrNull(focusedIndex)
         if (spec != null && layout.screens.size > 1) parts.add(StationAr.screenLabel(spec.source))
         val line = parts.joinToString("  ·  ")

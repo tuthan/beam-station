@@ -83,6 +83,13 @@ class SetupActivity : Activity() {
         val open = button("Open AR") { startActivity(Intent(this, ArActivity::class.java)) }
         buttons.addView(open)
         buttons.addView(button("Allow app screens") { allowAdb() })
+        buttons.addView(button("Forget laptops") {
+            val pairing = StationAr.pairing(this)
+            work.execute {
+                for (name in pairing.laptops()) pairing.forget(name)
+                showLaptops()
+            }
+        })
         column.addView(buttons)
         open.requestFocus()
         (open.background as GradientDrawable).setColor(Color.rgb(20, 120, 112))
@@ -106,20 +113,22 @@ class SetupActivity : Activity() {
         lastCount = 0
         sensors.start()
         tick.run()
+        work.execute { showLaptops() }
+    }
+
+    /** The paired laptops and the receiver's key (worker thread). */
+    private fun showLaptops() {
         val port = StationAr.settings(this).port
-        val pairing = StationAr.pairing(this)
-        work.execute {
-            val key = try {
-                Tls.fingerprint().take(8).uppercase()
-            } catch (e: Exception) {
-                AppLog.w("receiver key", e)
-                "?"
-            }
-            val names = pairing.laptops()
-            main.post {
-                laptops.text = "Laptops: " + (if (names.isEmpty()) "none paired yet" else names.joinToString(", ")) +
-                    "\nReceiver: port $port, key $key (open while AR is; station-ar-send pairs a laptop)"
-            }
+        val key = try {
+            Tls.fingerprint().take(8).uppercase()
+        } catch (e: Exception) {
+            AppLog.w("receiver key", e)
+            "?"
+        }
+        val names = StationAr.pairing(this).laptops()
+        main.post {
+            laptops.text = "Laptops: " + (if (names.isEmpty()) "none paired yet" else names.joinToString(", ")) +
+                "\nReceiver: port $port, key $key (open while AR is; station-ar-send pairs a laptop)"
         }
     }
 

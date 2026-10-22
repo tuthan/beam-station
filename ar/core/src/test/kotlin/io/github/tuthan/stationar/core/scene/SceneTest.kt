@@ -130,6 +130,15 @@ class SceneTest {
     }
 
     @Test
+    fun aWideStreamsHalvesSplitOnePicture() {
+        val l = ScreenSpec("wide:0")
+        val r = ScreenSpec("wide:1")
+        assertEquals(0f to 0.5f, l.u0 to l.u1)
+        assertEquals(0.5f to 1f, r.u0 to r.u1)
+        for (s in listOf("card", "laptop:0", "app:org.videolan.vlc")) assertEquals(0f to 1f, ScreenSpec(s).u0 to ScreenSpec(s).u1)
+    }
+
+    @Test
     fun aConnectingLaptopTakesTheCardsPlace() {
         val one = assertNotNull(Presets.place(Presets.welcome(), "laptop:0", 1920, 1080))
         assertEquals(listOf("laptop:0"), one.screens.map { it.source })

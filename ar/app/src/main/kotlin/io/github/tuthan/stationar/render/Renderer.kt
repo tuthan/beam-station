@@ -236,12 +236,7 @@ class Renderer(
         specs.clear()
         for (spec in layout.screens) {
             val s = sources[sourceName(spec.source)]
-            val (u0, u1) = when (spec.source) {
-                "wide:0" -> 0f to 0.5f
-                "wide:1" -> 0.5f to 1f
-                else -> 0f to 1f
-            }
-            val slot = Slot(spec.copy(), s, u0, u1)
+            val slot = Slot(spec.copy(), s, spec.u0, spec.u1)
             build(slot)
             slots.add(slot)
             specs.add(slot.spec)
