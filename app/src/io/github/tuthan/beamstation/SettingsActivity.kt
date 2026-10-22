@@ -34,7 +34,9 @@ import org.json.JSONObject
 import java.io.IOException
 import java.util.TimeZone
 import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.LinkedBlockingQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import kotlin.math.max
 import kotlin.math.min
 
@@ -182,11 +184,13 @@ class SettingsActivity : Activity() {
         private var timerEnd = 0L
         private var powerLine = ""
         private var powerChanges = 0
-        private val work: ExecutorService = Executors.newSingleThreadExecutor()   // ADB and Bluetooth calls
+        // ADB and Bluetooth calls, one at a time; the thread ends after 30 s without work (nothing to shut down).
+        private val work: ExecutorService = ThreadPoolExecutor(0, 1, 30, TimeUnit.SECONDS, LinkedBlockingQueue())
         private var errorLayout: StaticLayout? = null   // the last error, wrapped (rebuilt only when it changes)
         private var errorShown: String? = null
         private var adbLayout: StaticLayout? = null   // the Home Screen page's ADB line (XGIMI), wrapped
         private var adbShown: String? = null
+        private var versionText: String? = null   // read once: the package manager isn't asked on every frame
         private val spoken: Spoken
         private var startedAt = 0L
         private var lastNanos = 0L
@@ -564,7 +568,7 @@ class SettingsActivity : Activity() {
             Symbols.draw(context, c, "mark", cx, 400 * k, 150 * k, 0xEBFFFFFF.toInt())
             c.drawText(Config.APP_NAME, cx, 612 * k, title)
             c.drawText(Ui.tr("Início e tela de descanso da TV", "Your TV's home screen and screensaver"), cx, 660 * k, subtitle)
-            c.drawText(versionName(context), cx, 704 * k, version)
+            c.drawText(versionText ?: versionName(context).also { versionText = it }, cx, 704 * k, version)
 
             when (screen) {
                 MAIN -> drawMain(c, seconds)
