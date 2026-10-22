@@ -30,6 +30,10 @@ sender/linux/station-ar-send run --wide            # one 3840x1080 monitor, show
 sender/linux/station-ar-send run --source test     # a test pattern with the laptop's clock and a frame counter
 ```
 
+`discover` asks the mDNS group and reads the answers on UDP 5353, which ufw's default rules let in. If it still
+finds nothing (another firewall, or a network that drops multicast), give the Station's address instead: every
+command takes one.
+
 Options for `run`: `--size 2560x1440`, `--fps 60`, `--codec hevc|avc` (AVC can't do `--wide` on the Station),
 `--bitrate 15M`, `--device /dev/dri/renderD128`, `-v` (bitrate every 10 s).
 
@@ -54,7 +58,9 @@ before every frame. The encoder restarts on each connection, so the Station gets
 - Checked: `pair` (right PIN, wrong PIN, key shown and pinned, hosts file 0600), `run --source test` (key frame and
   parameter sets first, a delimiter per frame, about 15 Mbit/s, reconnect after the connection drops, no encoder left
   after SIGTERM), and the mDNS answer parser, all against a loopback stand-in for the Station.
-- Not yet checked against the Station: it was off the network when the sender was written.
+- Against the Station: TLS 1.3 with the Station's AndroidKeyStore key (TLS 1.2 refused), and the key's fingerprint
+  matching the one setup shows. `discover` with a unicast answer found nothing because ufw dropped it; it now
+  reads the group (not yet rechecked). Pairing and streaming to the Station: not yet, it went off the network.
 - **Not checked at all: `--source wf-recorder`.** wf-recorder isn't installed on this laptop, so its flags
   (`-r`, `-p`, `-m`, `-f /dev/stdout`) and the headless output commands follow their documentation only. Spike S3.1
   (wf-recorder vs wl-screenrec vs GStreamer on encode lag, CPU and stability) couldn't run for the same reason.
