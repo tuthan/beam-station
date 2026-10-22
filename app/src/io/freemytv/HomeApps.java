@@ -59,6 +59,10 @@ final class HomeApps {
     static final int INPUTS = 7;
     /** XGIMI projectors' buttons (Xgimi): auto focus, auto keystone, speaker mode, eco mode. */
     static final int FOCUS = 8, KEYSTONE = 9, SPEAKER = 10, ECO = 11;
+    /** Rokid glasses' 2D/3D button (Rokid); its key says what pressing it does: "glasses-3d" or "glasses-2d". */
+    static final int GLASSES_3D = 12;
+    /** The Rokid Station's sleep timer button (Power): each press steps it on (off, 30, 60, 90, 120 min). */
+    static final int SLEEP_TIMER = 13;
     /** Image size of each card (16:9; on screen it shows up to ~330 px wide). */
     static final int TILE_W = 384, TILE_H = 216;
 
@@ -217,8 +221,12 @@ final class HomeApps {
         return shortcut(SETTINGS, "settings", Ui.tr("Ajustes", "Settings"), "settings");
     }
 
-    /** Shortcuts in the bottom drawer (on XGIMI projectors, also focus, keystone, speaker mode and eco mode). */
-    static List<Item> drawerShortcuts(Context c) {
+    /**
+     * Shortcuts in the bottom drawer (on XGIMI projectors, also focus, keystone, speaker mode and eco mode; on the Rokid
+     * Station, the sleep timer, and 2D/3D with glasses plugged in). `glasses`: also asks the glasses for their mode
+     * (slow: background only); without it, the 2D/3D button waits for the next load.
+     */
+    static List<Item> drawerShortcuts(Context c, boolean glasses) {
         List<Item> items = new ArrayList<>();
         items.add(shortcut(ALL_APPS, "all", Ui.tr("Todos os Apps", "All Apps"), "apps"));
         items.add(shortcut(SETTINGS, "settings", Ui.tr("Ajustes do Início", "Home Settings"), "settings"));
@@ -229,6 +237,10 @@ final class HomeApps {
         }
         if (Xgimi.hasSpeaker(c)) items.add(shortcut(SPEAKER, "speaker", Ui.tr("Modo Caixa de Som", "Speaker Mode"), "speaker"));
         if (Xgimi.hasEco()) items.add(shortcut(ECO, "eco", Ui.tr("Modo Econômico", "Eco Mode"), "eco"));
+        if (Power.available()) items.add(shortcut(SLEEP_TIMER, "sleep-timer", Ui.tr("Timer para Dormir", "Sleep Timer"), "bedtime"));
+        int mode = glasses ? Rokid.mode(c) : -1;
+        if (mode == Rokid.MODE_3D) items.add(shortcut(GLASSES_3D, "glasses-2d", Ui.tr("Mudar para 2D", "Switch to 2D"), "3d"));
+        else if (mode >= 0) items.add(shortcut(GLASSES_3D, "glasses-3d", Ui.tr("Mudar para 3D", "Switch to 3D"), "3d"));
         return items;
     }
 
@@ -374,9 +386,25 @@ final class HomeApps {
         return it;
     }
 
-    /** The TV's own settings. XGIMI has no settings activity: its Settings is a service that the remote's key starts. */
+    /** Rokid's own Settings has the glasses' pages; Android TV's, which ACTION_SETTINGS opens there, has none. */
+    private static final ComponentName ROKID_SETTINGS = new ComponentName("com.rokid.erbox.settings",
+            "com.rokid.erbox.settings.MainActivity");
+
+    /**
+     * The TV's own settings. XGIMI has no settings activity: its Settings is a service that the remote's key starts. On
+     * the Rokid Station, Rokid's.
+     */
     static boolean openTvSettings(Context c) {
         if (HomeMode.XGIMI) return Xgimi.openSettings(c);
+        if (HomeMode.ROKID) {
+            try {
+                c.startActivity(new Intent(Intent.ACTION_MAIN).setComponent(ROKID_SETTINGS)
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+                return true;
+            } catch (ActivityNotFoundException | SecurityException e) {
+                AppLog.w("couldn't open Rokid's settings: " + e.getMessage());
+            }
+        }
         try {
             c.startActivity(new Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
             return true;
@@ -409,7 +437,7 @@ final class HomeApps {
                 intent = new Intent().setComponent(new ComponentName(a, SettingsActivity.class));
                 break;
             case ANDROID_SETTINGS:
-                if (HomeMode.XGIMI) return openTvSettings(a);
+                if (HomeMode.XGIMI || HomeMode.ROKID) return openTvSettings(a);
                 intent = new Intent(Settings.ACTION_SETTINGS);
                 break;
             case FOCUS:

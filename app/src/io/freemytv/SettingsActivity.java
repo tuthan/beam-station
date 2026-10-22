@@ -128,9 +128,13 @@ public class SettingsActivity extends Activity {
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
         private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5,
-                WIFI = 6, WIFI_FORGET = 7, BT = 8, BT_DEVICE = 9, PICTURE = 10;
-        /** The main screen's rows (Remote Buttons, TV Settings, Wi-Fi, Bluetooth, Picture, Time Zone), shown in the order of mainRows(). */
-        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6, BT_ROW = 7, PICTURE_ROW = 8, ZONE_ROW = 9;
+                WIFI = 6, WIFI_FORGET = 7, BT = 8, BT_DEVICE = 9, PICTURE = 10, GLASSES = 11, POWER = 12;
+        /**
+         * The main screen's rows (Remote Buttons, TV Settings, Wi-Fi, Bluetooth, Picture, Time Zone, Glasses, Power), shown
+         * in the order of mainRows().
+         */
+        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6, BT_ROW = 7, PICTURE_ROW = 8, ZONE_ROW = 9,
+                GLASSES_ROW = 10, POWER_ROW = 11;
         private static final String[] WIFI_BARS = {"wifi_1", "wifi_1", "wifi_2", "wifi_3", "wifi_4"};
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
@@ -160,13 +164,13 @@ public class SettingsActivity extends Activity {
         private boolean hasKey;
         private int screen = MAIN, focus;
         private boolean running, okDown, backDown, wasBusy;
-        private final int[] mainRows = mainRows();
-        // Wi-Fi (XGIMI projectors): what the projector sees, the line under the list, the network picked to forget.
+        private int[] mainRows = mainRows(false);
+        // Wi-Fi (XGIMI projectors, Rokid Station): what the TV sees, the line under the list, the network picked to forget.
         private Wifi.Status wifi;
         private String wifiLine = "";
         private Wifi.Network wifiPicked;
         private boolean wifiBusy;
-        // Bluetooth (XGIMI projectors): paired devices, the ones the search found, and the device being paired or picked.
+        // Bluetooth (XGIMI projectors, Rokid Station): paired devices, the ones the search found, and the device being paired or picked.
         private List<Bluetooth.Device> btPaired = new ArrayList<>();
         private final List<Bluetooth.Device> btFound = new ArrayList<>();
         private Bluetooth.Device btPicked, btPairing;
@@ -179,6 +183,16 @@ public class SettingsActivity extends Activity {
         private int game = -1;   // HDMI game mode (Xgimi.GAME_*), -1 until read
         private String pictureLine = "";
         private int pictureChanges;   // changes on their way: only the last one's answer is shown
+        // Glasses (Rokid Station): the glasses' settings (null while none are plugged in), and a change on its way.
+        private Rokid.State glasses;
+        private String glassesLine = "";
+        private int glassesChanges;
+        // Power (Rokid Station): the battery, the timeouts (null until read), when the sleep timer goes off, a change on its way.
+        private Power.Battery battery;
+        private Power.Timeouts timeouts;
+        private long timerEnd;
+        private String powerLine = "";
+        private int powerChanges;
         private final ExecutorService work = Executors.newSingleThreadExecutor();   // ADB and Bluetooth calls
         private StaticLayout errorLayout;   // the last error, wrapped (rebuilt only when it changes)
         private String errorShown;
@@ -303,6 +317,8 @@ public class SettingsActivity extends Activity {
                     if (mainRow(row) == BT_ROW) return "Bluetooth" + (btSummary().isEmpty() ? "" : ", " + btSummary());
                     if (mainRow(row) == PICTURE_ROW) return Ui.tr("Imagem", "Picture") + (pictureSummary().isEmpty() ? "" : ", " + pictureSummary());
                     if (mainRow(row) == ZONE_ROW) return Ui.tr("Fuso Horário", "Time Zone") + ", " + zoneSummary();
+                    if (mainRow(row) == GLASSES_ROW) return Ui.tr("Óculos", "Glasses") + (glassesSummary().isEmpty() ? "" : ", " + glassesSummary());
+                    if (mainRow(row) == POWER_ROW) return Ui.tr("Energia", "Power") + (powerSummary().isEmpty() ? "" : ", " + powerSummary());
                     String[] names = {Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview"), Ui.tr("Ajustes do Início", "Home Settings"),
                             Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings")};
                     int at = mainRow(row) - 1;
@@ -340,7 +356,9 @@ public class SettingsActivity extends Activity {
                 }
                 case HOME_SETTINGS:
                 case REMOTE_KEYS:
-                case PICTURE: {
+                case PICTURE:
+                case GLASSES:
+                case POWER: {
                     String[] labels = listLabels(), values = listValues();
                     return row < labels.length ? labels[row] + ", " + values[row] : "";
                 }
@@ -386,10 +404,12 @@ public class SettingsActivity extends Activity {
             lastNanos = 0;
             handler.post(poll);
             if (screen == WIFI) handler.post(wifiScan);
-            else if (HomeMode.XGIMI) refreshWifi(false);
+            else if (Wifi.available()) refreshWifi(false);
             if (screen == BT || screen == BT_DEVICE) openBt();
             else if (Bluetooth.available()) refreshBt();
             if (Picture.available()) refreshPicture();
+            if (Rokid.available()) refreshGlasses();
+            if (Power.available()) refreshPower();
             Choreographer.getInstance().postFrameCallback(this);
             spoken.readAgain();
         }
@@ -456,23 +476,33 @@ public class SettingsActivity extends Activity {
             return HomeMode.FREE.equals(state.optString("mode")) && !state.optBoolean("homeReverted");
         }
 
-        /** Remote Buttons only where the remote's buttons can be reached; Picture, Wi-Fi, Bluetooth and Time Zone on XGIMI projectors, before TV Settings. */
-        private static int[] mainRows() {
+        /**
+         * Remote Buttons only where the remote's buttons can be reached; Picture and Time Zone on XGIMI projectors; Wi-Fi
+         * and Bluetooth on XGIMI projectors and the Rokid Station; Glasses while Rokid glasses are plugged in; Power on the
+         * Rokid Station; all before TV Settings.
+         */
+        private static int[] mainRows(boolean glasses) {
             List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
             if (RemoteKeys.supported()) rows.add(REMOTE_ROW);
             if (Picture.available()) rows.add(PICTURE_ROW);
-            if (HomeMode.XGIMI) rows.add(WIFI_ROW);
+            if (Wifi.available()) rows.add(WIFI_ROW);
             if (Bluetooth.available()) rows.add(BT_ROW);
             if (HomeMode.XGIMI) rows.add(ZONE_ROW);
+            if (glasses) rows.add(GLASSES_ROW);
+            if (Power.available()) rows.add(POWER_ROW);
             rows.add(TV_ROW);
             int[] out = new int[rows.size()];
             for (int i = 0; i < out.length; i++) out[i] = rows.get(i);
             return out;
         }
 
-        /** Where the main screen's rows start: one row higher past seven rows, so what's under them (the TMDB credit) stays on screen. */
+        /**
+         * Where the main screen's rows start: higher past seven rows (on XGIMI projectors one row at most), so what's under
+         * them (the TMDB credit) stays on screen.
+         */
         private float mainTop() {
-            return LIST_TOP - Math.min(1, Math.max(0, mainRows.length - 7)) * (ROW_H + ROW_GAP);
+            int up = Math.max(0, mainRows.length - 7);
+            return LIST_TOP - (HomeMode.XGIMI ? Math.min(1, up) : up) * (ROW_H + ROW_GAP);
         }
 
         /** The main screen's row at position i. */
@@ -495,7 +525,9 @@ public class SettingsActivity extends Activity {
                 case BT: return Math.min(PICK_VISIBLE, 1 + btCount());
                 case BT_DEVICE: return btActions().length;
                 case HOME_SETTINGS:
-                case PICTURE: return listLabels().length;
+                case PICTURE:
+                case GLASSES:
+                case POWER: return listLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
                 default: return Prefs.KEYS.length;
@@ -538,9 +570,9 @@ public class SettingsActivity extends Activity {
             String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Tela de Descanso", "Screensaver"),
                     Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Prateleira", "Shelf"),
                     Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi"), "Bluetooth",
-                    Ui.tr("Imagem", "Picture"), Ui.tr("Fuso Horário", "Time Zone")};
-            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", HomeMode.XGIMI ? wifiSummary() : "", btSummary(),
-                    pictureSummary(), HomeMode.XGIMI ? zoneSummary() : ""};
+                    Ui.tr("Imagem", "Picture"), Ui.tr("Fuso Horário", "Time Zone"), Ui.tr("Óculos", "Glasses"), Ui.tr("Energia", "Power")};
+            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", Wifi.available() ? wifiSummary() : "", btSummary(),
+                    pictureSummary(), HomeMode.XGIMI ? zoneSummary() : "", glassesSummary(), powerSummary()};
             for (int i = 0; i < rowCount(); i++) {
                 int row = mainRow(i);
                 float y = (mainTop() + i * (ROW_H + ROW_GAP)) * k;
@@ -594,7 +626,7 @@ public class SettingsActivity extends Activity {
                 c.restore();
                 y += errorLayout.getLineBaseline(errorLayout.getLineCount() - 1) - errorLayout.getLineBaseline(0) + 46 * k;
             }
-            if (mainRows.length <= 8) y = drawComparison(c, y);   // past eight rows, no room for it
+            if (!HomeMode.XGIMI || mainRows.length <= 8) y = drawComparison(c, y);   // XGIMI past eight rows: no room for it
             y = drawRecs(c, y + 26 * k);
             drawNotices(c, y + 40 * k);
         }
@@ -769,7 +801,8 @@ public class SettingsActivity extends Activity {
                     if (down && screen == SHELF_EDIT) {
                         moveShelfApp(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
-                    } else if (down && (screen == HOME_SETTINGS || screen == REMOTE_KEYS || screen == PICTURE)) {
+                    } else if (down && (screen == HOME_SETTINGS || screen == REMOTE_KEYS || screen == PICTURE || screen == GLASSES
+                            || screen == POWER)) {
                         adjust(e.getKeyCode() == KeyEvent.KEYCODE_DPAD_RIGHT ? 1 : -1);
                         invalidate();
                     }
@@ -808,7 +841,8 @@ public class SettingsActivity extends Activity {
                             } else {
                                 if (screen == BT) closeBt();
                                 focus = mainIndex(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3 : screen == REMOTE_KEYS ? REMOTE_ROW
-                                        : screen == WIFI ? WIFI_ROW : screen == BT ? BT_ROW : screen == PICTURE ? PICTURE_ROW : 0);
+                                        : screen == WIFI ? WIFI_ROW : screen == BT ? BT_ROW : screen == PICTURE ? PICTURE_ROW
+                                        : screen == GLASSES ? GLASSES_ROW : screen == POWER ? POWER_ROW : 0);
                                 screen = MAIN;
                             }
                         }
@@ -891,13 +925,15 @@ public class SettingsActivity extends Activity {
             return v;
         }
 
-        /** The rows of the list screens: Home Settings, Remote Buttons, Picture. */
+        /** The rows of the list screens: Home Settings, Remote Buttons, Picture, Glasses, Power. */
         private String[] listLabels() {
-            return screen == REMOTE_KEYS ? keyLabels() : screen == PICTURE ? pictureLabels() : settingLabels();
+            return screen == REMOTE_KEYS ? keyLabels() : screen == PICTURE ? pictureLabels() : screen == GLASSES ? glassesLabels()
+                    : screen == POWER ? powerLabels() : settingLabels();
         }
 
         private String[] listValues() {
-            return screen == REMOTE_KEYS ? keyValues() : screen == PICTURE ? pictureValues() : settingValues();
+            return screen == REMOTE_KEYS ? keyValues() : screen == PICTURE ? pictureValues() : screen == GLASSES ? glassesValues()
+                    : screen == POWER ? powerValues() : settingValues();
         }
 
         /** Installed TV apps, by name, after "Nothing": what a remote button can open. */
@@ -922,6 +958,14 @@ public class SettingsActivity extends Activity {
         private void adjust(int dir) {
             if (screen == PICTURE) {
                 adjustPicture(dir);
+                return;
+            }
+            if (screen == GLASSES) {
+                adjustGlasses(dir);
+                return;
+            }
+            if (screen == POWER) {
+                adjustPower(dir);
                 return;
             }
             if (screen == REMOTE_KEYS) {
@@ -1246,7 +1290,205 @@ public class SettingsActivity extends Activity {
             });
         }
 
-        // MARK: - Wi-Fi (XGIMI projectors)
+        // MARK: - Glasses (Rokid Station)
+
+        /** The Glasses page: four settings, then Brightness and Display zoom, which open Rokid's own sliders. */
+        private static final int GLASSES_ROWS = 6, SLIDER_ROW = 4;
+
+        private static String sceneName(int scene) {
+            switch (scene) {
+                case 1: return Ui.tr("Padrão", "Standard");
+                case 2: return Ui.tr("Filme", "Movie");
+                case 3: return Ui.tr("Leitura", "Reading");
+                case 4: return Ui.tr("Descanso visual", "Eye care");
+                default: return "—";
+            }
+        }
+
+        private static String hz(int fps) {
+            return fps + (Ui.ru ? " Гц" : " Hz");
+        }
+
+        /** The main row's value: 3D, or 2D with its refresh rate. */
+        private String glassesSummary() {
+            return glasses == null ? "" : glasses.is3d() ? "3D" : "2D · " + hz(glasses.fps);
+        }
+
+        private String[] glassesLabels() {
+            return new String[] {Ui.tr("Modo", "Mode"), Ui.tr("Taxa de atualização", "Refresh rate"), Ui.tr("Imagem", "Picture"),
+                    Ui.tr("Alto-falantes", "Speakers"), Ui.tr("Brilho", "Brightness"), Ui.tr("Zoom da tela", "Display zoom")};
+        }
+
+        private String[] glassesValues() {
+            String[] v = new String[GLASSES_ROWS];
+            if (glasses == null) {
+                java.util.Arrays.fill(v, "—");
+                return v;
+            }
+            v[0] = glasses.is3d() ? Ui.tr("3D (lado a lado)", "3D (side by side)") : "2D";
+            v[1] = hz(glasses.fps);
+            v[2] = sceneName(glasses.scene);
+            v[3] = glasses.audio == 0 ? Ui.tr("Privado", "Private") : Ui.tr("Público", "Public");
+            v[4] = v[5] = Ui.tr("Abrir", "Open");
+            return v;
+        }
+
+        /** In 3D the glasses run at 60 Hz only: the refresh rate row is locked. */
+        private boolean glassesLocked(int row) {
+            return row == 1 && glasses != null && glasses.is3d();
+        }
+
+        /** Reads the glasses again; the Glasses row comes and goes with them. */
+        private void refreshGlasses() {
+            if (glassesChanges > 0) return;
+            Context app = getContext().getApplicationContext();
+            work.execute(() -> {
+                Rokid.State s = Rokid.read(app);
+                handler.post(() -> {
+                    if (glassesChanges > 0) return;
+                    boolean had = glasses != null;
+                    glasses = s;
+                    if (had != (s != null)) {
+                        int row = screen == MAIN ? mainRow(focus) : -1;
+                        mainRows = mainRows(s != null);
+                        if (row >= 0) focus = mainIndex(row);
+                        if (screen == GLASSES && s == null) {
+                            screen = MAIN;
+                            focus = 0;
+                        }
+                        spoken.focusMoved();
+                    }
+                    invalidate();
+                });
+            });
+        }
+
+        /** The focused row one step on: shown at once, then what the glasses took (120 Hz reads back as its own mode). */
+        private void adjustGlasses(int dir) {
+            if (glasses == null || glassesChanges >= 3) return;   // a held arrow doesn't queue a long run of changes
+            Rokid.State g = glasses;
+            int row = focus, want;
+            if (row >= SLIDER_ROW) return;   // Brightness and Display zoom only open, with OK
+            if (glassesLocked(row)) {
+                glassesLine = Ui.tr("120 Hz é só no 2D.", "120 Hz is for 2D only.");
+                return;
+            }
+            switch (row) {
+                case 0: want = g.mode = g.is3d() ? Rokid.MODE_2D : Rokid.MODE_3D; break;
+                case 1: want = g.fps = nextValue(Rokid.FPS, g.fps, dir); break;
+                case 2: want = g.scene = nextValue(Rokid.SCENES, g.scene, dir); break;
+                default: want = g.audio = nextValue(Rokid.AUDIO, g.audio, dir); break;
+            }
+            glassesChanges++;
+            glassesLine = "";
+            Context app = getContext().getApplicationContext();
+            work.execute(() -> {
+                Rokid.State now = row == 0 ? Rokid.setMode(app, want) : row == 1 ? Rokid.setFps(app, want)
+                        : row == 2 ? Rokid.setScene(app, want) : Rokid.setAudio(app, want);
+                handler.post(() -> {
+                    if (--glassesChanges > 0) return;
+                    if (now == null) {
+                        glassesLine = Ui.tr("Não deu para falar com os óculos.", "Couldn't reach the glasses.");
+                        refreshGlasses();
+                    } else {
+                        glasses = now;
+                        int got = row == 0 ? (now.is3d() ? Rokid.MODE_3D : Rokid.MODE_2D) : row == 1 ? now.fps
+                                : row == 2 ? now.scene : now.audio;
+                        if (got != want) glassesLine = Ui.tr("Os óculos não aceitaram essa mudança.", "The glasses didn't take that change.");
+                    }
+                    invalidate();
+                });
+            });
+        }
+
+        // MARK: - Power (Rokid Station)
+
+        /** The main row's value: the battery, and whether it's charging. */
+        private String powerSummary() {
+            return battery == null ? "" : battery.level + "%" + (battery.plugged ? " · " + Ui.tr("Carregando", "Charging") : "");
+        }
+
+        private String[] powerLabels() {
+            return new String[] {Ui.tr("Bateria", "Battery"), Ui.tr("Tela de descanso após", "Screensaver after"),
+                    Ui.tr("Dormir após", "Sleep after"), Ui.tr("Timer para dormir", "Sleep timer")};
+        }
+
+        private String[] powerValues() {
+            String[] v = new String[4];
+            v[0] = battery == null ? "—" : battery.level + "% · " + (battery.plugged ? Ui.tr("Carregando", "Charging") : Ui.tr("Na bateria", "On battery"));
+            v[1] = timeouts == null ? "—" : Power.seconds(timeouts.screensaver);
+            v[2] = timeouts == null ? "—" : timeouts.sleep < 0 ? Ui.tr("Nunca", "Never") : Power.seconds(timeouts.sleep);
+            int left = Power.left(timerEnd);
+            v[3] = left == 0 ? Ui.tr("Desligado", "Off") : Power.duration(left);
+            return v;
+        }
+
+        /** The battery and the timer at once; the timeouts from the TV's ADB. */
+        private void refreshPower() {
+            if (powerChanges > 0) return;
+            Context app = getContext().getApplicationContext();
+            battery = Power.battery(app);
+            timerEnd = Power.timerEnd(app);
+            work.execute(() -> {
+                Power.Timeouts t;
+                try {
+                    t = Power.timeouts(app);
+                } catch (IOException e) {
+                    AppLog.w("power: " + e.getMessage());
+                    t = null;
+                }
+                Power.Timeouts read = t;
+                handler.post(() -> {
+                    if (powerChanges > 0) return;
+                    if (read != null) timeouts = read;
+                    else powerLine = Ui.tr("Não deu para ler os ajustes de energia.", "Couldn't read the power settings.");
+                    invalidate();
+                });
+            });
+        }
+
+        /** The focused row one step on: the battery is only shown; the timer is ours; the timeouts are read back. */
+        private void adjustPower(int dir) {
+            int row = focus;
+            if (row == 0) return;
+            if (row == 3) {
+                Power.setTimer(getContext(), Power.nextTimer(Power.left(timerEnd), dir));
+                timerEnd = Power.timerEnd(getContext());
+                powerLine = "";
+                return;
+            }
+            if (timeouts == null || powerChanges >= 3) return;   // a held arrow doesn't queue a long run of changes
+            Power.Timeouts t = timeouts;
+            int want = row == 1 ? (t.screensaver = nextValue(Power.SCREENSAVER, t.screensaver, dir))
+                    : (t.sleep = nextValue(Power.SLEEP, t.sleep, dir));
+            powerChanges++;
+            powerLine = "";
+            Context app = getContext().getApplicationContext();
+            work.execute(() -> {
+                Power.Timeouts now;
+                try {
+                    now = row == 1 ? Power.setScreensaver(app, want) : Power.setSleep(app, want);
+                } catch (IOException e) {
+                    AppLog.w("power: " + e.getMessage());
+                    now = null;
+                }
+                Power.Timeouts got = now;
+                handler.post(() -> {
+                    if (--powerChanges > 0) return;
+                    if (got == null) {
+                        powerLine = Ui.tr("Não deu para mudar os ajustes de energia.", "Couldn't change the power settings.");
+                    } else {
+                        timeouts = got;
+                        if ((row == 1 ? got.screensaver : got.sleep) != want) {
+                            powerLine = Ui.tr("A Station não aceitou essa mudança.", "The Station didn't take that change.");
+                        }
+                    }
+                    invalidate();
+                });
+            });
+        }
+
+        // MARK: - Wi-Fi (XGIMI projectors, Rokid Station)
 
         private int wifiCount() {
             return wifi == null ? 0 : wifi.networks.size();
@@ -1278,8 +1520,9 @@ public class SettingsActivity extends Activity {
         private String[][] forgetRows() {
             boolean inUse = wifiPicked != null && wifiPicked.connected;
             return new String[][] {
-                {Ui.tr("Esquecer esta rede", "Forget this network"), inUse ? Ui.tr("O projetor se desconecta dela agora.",
-                        "The projector disconnects from it now.") : Ui.tr("Ela não entra mais sozinha.", "It won't join by itself anymore.")},
+                {Ui.tr("Esquecer esta rede", "Forget this network"), !inUse ? Ui.tr("Ela não entra mais sozinha.", "It won't join by itself anymore.")
+                        : HomeMode.ROKID ? Ui.tr("A Station se desconecta dela agora.", "The Station disconnects from it now.")
+                        : Ui.tr("O projetor se desconecta dela agora.", "The projector disconnects from it now.")},
                 {Ui.tr("Cancelar", "Cancel"), Ui.tr("Manter salva", "Keep it saved")}};
         }
 
@@ -1506,7 +1749,7 @@ public class SettingsActivity extends Activity {
             }
         }
 
-        // MARK: - Bluetooth (XGIMI projectors)
+        // MARK: - Bluetooth (XGIMI projectors, Rokid Station)
 
         private int btCount() {
             return btPaired.size() + btFound.size();
@@ -1537,9 +1780,15 @@ public class SettingsActivity extends Activity {
         private String[][] btActions() {
             List<String[]> rows = new ArrayList<>();
             if (btPicked != null && btPicked.audio) {
-                rows.add(btPicked.connected
-                        ? new String[] {Ui.tr("Desconectar", "Disconnect"), Ui.tr("O som volta para o projetor.", "The sound goes back to the projector.")}
-                        : new String[] {Ui.tr("Conectar", "Connect"), Ui.tr("O som do projetor sai por ele.", "Play the projector's sound on it.")});
+                if (HomeMode.ROKID) {
+                    rows.add(btPicked.connected
+                            ? new String[] {Ui.tr("Desconectar", "Disconnect"), Ui.tr("O som volta para os óculos.", "The sound goes back to the glasses.")}
+                            : new String[] {Ui.tr("Conectar", "Connect"), Ui.tr("O som da Station sai por ele.", "Play the Station's sound on it.")});
+                } else {
+                    rows.add(btPicked.connected
+                            ? new String[] {Ui.tr("Desconectar", "Disconnect"), Ui.tr("O som volta para o projetor.", "The sound goes back to the projector.")}
+                            : new String[] {Ui.tr("Conectar", "Connect"), Ui.tr("O som do projetor sai por ele.", "Play the projector's sound on it.")});
+                }
             }
             rows.add(new String[] {Ui.tr("Esquecer este aparelho", "Forget this device"), Ui.tr("Para usar, pareie de novo.", "Pair it again to use it.")});
             return rows.toArray(new String[0][]);
@@ -1865,18 +2114,19 @@ public class SettingsActivity extends Activity {
         }
 
         private void drawList(Canvas c) {
-            boolean keys = screen == REMOTE_KEYS, pic = screen == PICTURE;
+            boolean keys = screen == REMOTE_KEYS, pic = screen == PICTURE, eyes = screen == GLASSES, power = screen == POWER;
             String[] labels = listLabels();
             String[] values = listValues();
             Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
-            c.drawText(keys ? Ui.tr("Botões do Controle", "Remote Buttons") : pic ? Ui.tr("Imagem", "Picture") : Ui.tr("Ajustes do Início", "Home Settings"),
+            c.drawText(keys ? Ui.tr("Botões do Controle", "Remote Buttons") : pic ? Ui.tr("Imagem", "Picture")
+                    : eyes ? Ui.tr("Óculos", "Glasses") : power ? Ui.tr("Energia", "Power") : Ui.tr("Ajustes do Início", "Home Settings"),
                     LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
             for (int i = 0; i < labels.length; i++) {
                 float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
                 rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
                 float f = drawRowBackground(c, i);
                 rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
-                boolean locked = screen == HOME_SETTINGS && i >= COIN_ROWS && !Prefs.quotes();
+                boolean locked = screen == HOME_SETTINGS && i >= COIN_ROWS && !Prefs.quotes() || eyes && glassesLocked(i);
                 rowValue.setColor(blend(locked ? 0x59FFFFFF : 0xB3FFFFFF, locked ? 0x591C1C1E : 0xB31C1C1E, f));
                 if (locked) rowLabel.setColor(blend(0x73FFFFFF, 0x731C1C1E, f));
                 float base = rowRect.centerY() + Ui.halfCap(rowLabel);
@@ -1886,8 +2136,11 @@ public class SettingsActivity extends Activity {
             Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
             float hy = (LIST_TOP + 20 + labels.length * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
             c.drawText(Ui.tr("OK ou as setas mudam o valor.", "OK or the arrows change the value."), LIST_X * k + 30 * k, hy, hint);
-            if (pic) {
-                String line = !pictureLine.isEmpty() ? pictureLine : Ui.tr("As mudanças aparecem na hora.", "Changes show at once.");
+            if (pic || eyes || power) {
+                String line = pic ? (!pictureLine.isEmpty() ? pictureLine : Ui.tr("As mudanças aparecem na hora.", "Changes show at once."))
+                        : eyes ? (!glassesLine.isEmpty() ? glassesLine : Ui.tr("O Início volta os óculos para o 2D.", "Home puts the glasses back in 2D."))
+                        : !powerLine.isEmpty() ? powerLine : timeouts != null && timeouts.stayOnPlugged
+                        ? Ui.tr("Na tomada, a tela de descanso não começa.", "While plugged in, the screensaver doesn't start.") : "";
                 c.drawText(TextUtils.ellipsize(line, new TextPaint(hint), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(),
                         LIST_X * k + 30 * k, hy + 38 * k, hint);
             } else if (keys) {
@@ -1929,6 +2182,23 @@ public class SettingsActivity extends Activity {
             }
             if (screen == PICTURE) {
                 adjustPicture(1);
+                invalidate();
+                return;
+            }
+            if (screen == POWER) {
+                adjustPower(1);
+                invalidate();
+                return;
+            }
+            if (screen == GLASSES && focus >= SLIDER_ROW) {
+                if (!Rokid.openSlider(c, focus == SLIDER_ROW ? Rokid.BRIGHTNESS : Rokid.ZOOM)) {
+                    glassesLine = Ui.tr("Não deu para abrir.", "Couldn't open it.");
+                }
+                invalidate();
+                return;
+            }
+            if (screen == GLASSES) {
+                adjustGlasses(1);
                 invalidate();
                 return;
             }
@@ -2002,6 +2272,16 @@ public class SettingsActivity extends Activity {
                 focus = 0;
                 pictureLine = "";
                 refreshPicture();
+            } else if (mainRow(focus) == POWER_ROW) {
+                screen = POWER;
+                focus = 0;
+                powerLine = "";
+                refreshPower();
+            } else if (mainRow(focus) == GLASSES_ROW) {
+                screen = GLASSES;
+                focus = 0;
+                glassesLine = "";
+                refreshGlasses();
             } else {
                 HomeApps.openTvSettings(c);
             }

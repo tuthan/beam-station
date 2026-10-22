@@ -12,8 +12,8 @@
          Chinese). Elsewhere they're never granted and unused. -->
     <uses-permission android:name="android.permission.CHANGE_CONFIGURATION" />
     <uses-permission android:name="android.permission.WRITE_SETTINGS" />
-    <!-- XGIMI projectors only (Android 11): the Bluetooth screen. Searching needs location there, granted through ADB in
-         Beam Home mode; the location itself is never read. -->
+    <!-- XGIMI projectors and the Rokid Station (Android 11): the Bluetooth screen. Searching needs location there, granted
+         through ADB in Beam Home mode; the location itself is never read. -->
     <uses-permission android:name="android.permission.BLUETOOTH" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
@@ -43,6 +43,7 @@
         <package android:name="com.xgimi.systemui" />
         <package android:name="com.xgimi.soundermodeservice" />
         <package android:name="com.xgimi.xgimiservice" />
+        <package android:name="com.rokid.erbox.settings" />
         <intent>
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LEANBACK_LAUNCHER" />

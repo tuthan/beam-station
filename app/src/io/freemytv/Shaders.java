@@ -292,13 +292,28 @@ final class Shaders {
         }
     }
 
-    // Sky phases through the day, Beam Home's: a dark room lit by the projector, so even the day stays deep (plum and
-    // wine) and the light is warm (ember, amber). Before Android 13 only the first two show, as a gradient.
-    private static final int[] NIGHT = {0x0C0816, 0x361A40, 0x8A4A2C};
-    private static final int[] DAWN = {0x1E1226, 0x9A4A3C, 0xF0A060};
-    private static final int[] DAY = {0x1C1230, 0x83365A, 0xF0A050};
-    private static final int[] SUNSET = {0x22102A, 0xB0443C, 0xF59A48};
-    private static final int[] DUSK = {0x140C26, 0x4E2468, 0xC8703C};
+    // Sky phases through the day, each build its own. Before Android 13 only the first two show, as a gradient.
+    private static final int[] NIGHT, DAWN, DAY, SUNSET, DUSK;
+
+    static {
+        if (HomeMode.ROKID) {
+            // The glasses: in them black is see-through and bright colors glare, so every phase stays near black with
+            // cool light (cyan, blue, violet).
+            NIGHT = new int[] {0x020409, 0x0A2234, 0x1E8C9C};
+            DAWN = new int[] {0x04060F, 0x182850, 0x5CC8C0};
+            DAY = new int[] {0x041020, 0x0E3A5C, 0x38B8D8};
+            SUNSET = new int[] {0x07040F, 0x281850, 0xB45CC8};
+            DUSK = new int[] {0x03050E, 0x18184A, 0x6A54D8};
+        } else {
+            // The projector: a dark room lit by its beam, so even the day stays deep (plum and wine) and the light is
+            // warm (ember, amber).
+            NIGHT = new int[] {0x0C0816, 0x361A40, 0x8A4A2C};
+            DAWN = new int[] {0x1E1226, 0x9A4A3C, 0xF0A060};
+            DAY = new int[] {0x1C1230, 0x83365A, 0xF0A050};
+            SUNSET = new int[] {0x22102A, 0xB0443C, 0xF59A48};
+            DUSK = new int[] {0x140C26, 0x4E2468, 0xC8703C};
+        }
+    }
 
     /**
      * Palette for the sun's current position at your location. Uses the sunrise and sunset times from the last weather

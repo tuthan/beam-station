@@ -112,7 +112,8 @@ final class Prefs {
     static void setTemperature(String v) { put("temperature", v); }
 
     /**
-     * "auto" (dark from sunset to sunrise), "light" or "dark". The projector starts dark, for the dark room it plays in.
+     * "auto" (dark from sunset to sunrise), "light" or "dark". Both builds start dark: the projector for the dark room it
+     * plays in, the glasses because in them black is see-through and white glares.
      */
     static String theme() {
         String v = sp().getString("theme", "dark");

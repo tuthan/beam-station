@@ -48,7 +48,9 @@ public class HomeActivity extends Activity {
             recreate();   // a new language or city: draw everything again
             return;
         }
-        if (home != null) home.resume();
+        if (home == null) return;
+        Rokid.homeResumed(this);   // before the drawer reads the glasses' mode (home.resume reloads it)
+        home.resume();
     }
 
     @Override protected void onPause() {

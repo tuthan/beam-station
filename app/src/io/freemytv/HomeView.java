@@ -2,7 +2,10 @@ package io.freemytv;
 
 import android.accessibilityservice.AccessibilityServiceInfo;
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
@@ -240,11 +243,20 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
     private int weatherLinePrefs = -1;
     private String weatherLineLanguage = "";
     private long clockMinute = -1;
+    private Power.Battery battery;   // Rokid Station: the battery in the corner (null: none to show)
+    private final BroadcastReceiver batteryEvents = new BroadcastReceiver() {
+        @Override public void onReceive(Context c, Intent i) {
+            Power.Battery b = Power.battery(i);
+            if (b == null ? battery == null : battery != null && b.level == battery.level && b.plugged == battery.plugged) return;
+            battery = b;
+            status.invalidate();
+        }
+    };
     private boolean okDown, backDown;
 
     private Paint labelPaint, metaPaint, clockPaint, buttonPaint, capsuleText, tipPaint, quotePaint, staleQuote;
     private Paint rowTitle, drawerLabel, cardTitle, cardText, cardDim, cardDimRight, bigTemp, hourPaint, hourTemp;
-    private Paint pricePaint, changePaint, sheetTitle;
+    private Paint pricePaint, changePaint, sheetTitle, batteryPaint;
     private TextPaint titlePaint, gridLabel, toastPaint;
     private final Paint bitmapPaint = new Paint(Paint.ANTI_ALIAS_FLAG | Paint.FILTER_BITMAP_FLAG);
     private final Paint imagePaint = new Paint(Paint.FILTER_BITMAP_FLAG | Paint.DITHER_FLAG);
@@ -398,7 +410,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         // First time: right away (a cold start opens with the apps already there); missing logos come from reload().
         setShelf(HomeApps.shelf(a, false));
         setStatusItems(statusList(a));
-        setDrawerItems(drawerList(a));
+        setDrawerItems(drawerList(a, false));
     }
 
     // MARK: - Lifecycle (called by HomeActivity)
@@ -415,6 +427,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.refreshIfStale();
         recs.refreshIfStale();
         if (tvInputs != null) tvInputs.registerCallback(inputCallback, handler);
+        if (Power.available()) battery = Power.battery(getContext().registerReceiver(batteryEvents, new IntentFilter(Intent.ACTION_BATTERY_CHANGED)));
         handler.postDelayed(tick, 15_000);
         checkNotices();
         checkBattery();
@@ -443,6 +456,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         data.removeListener(this);
         recs.removeListener(this);
         if (tvInputs != null) tvInputs.unregisterCallback(inputCallback);
+        if (Power.available()) getContext().unregisterReceiver(batteryEvents);
     }
 
     void destroy() {
@@ -474,13 +488,16 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         motionDirty = true;
     }
 
-    /** The corner buttons, with their names in the current language (Live TV only where there is live TV). */
+    /**
+     * The corner buttons, with their names in the current language (Live TV only where there is live TV; HDMI Inputs
+     * not on the Rokid Station, which has none).
+     */
     private void makeLightButtons() {
         lightButtons.clear();
         if (HomeApps.liveTv(getContext()) != null) {
             lightButtons.add(HomeApps.action(HomeApps.LIVE_TV, "live", Ui.tr("TV aberta", "Live TV"), "live_tv"));
         }
-        lightButtons.add(HomeApps.action(HomeApps.INPUTS, "inputs", Ui.tr("Entradas HDMI", "HDMI Inputs"), "hdmi"));
+        if (!HomeMode.ROKID) lightButtons.add(HomeApps.action(HomeApps.INPUTS, "inputs", Ui.tr("Entradas HDMI", "HDMI Inputs"), "hdmi"));
         lightButtons.add(HomeApps.action(HomeApps.SETTINGS, "settings", Ui.tr("Configurações", "Settings"), "settings"));
     }
 
@@ -587,6 +604,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         lCardMeta = Ui.text(Ui.medium, 25 * k, L_DIM);
         lQuote = Ui.numbers(Ui.regular, 21 * k, L_FAINT);
         lTip = Ui.text(Ui.semibold, 25 * k, L_INK);
+        batteryPaint = Ui.numbers(Ui.semibold, 26 * k, L_INK);
         lTip.setTextAlign(Paint.Align.CENTER);
         lBattery = Ui.numbers(Ui.semibold, 27 * k, L_INK);
         lDate = Ui.text(Ui.semibold, 34 * k, L_DIM);
@@ -1413,9 +1431,10 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     // MARK: - Bottom drawer
 
-    private static List<HomeApps.Item> drawerList(Context c) {
+    /** `glasses`: also the 2D/3D button, which asks the glasses (background only). */
+    private static List<HomeApps.Item> drawerList(Context c, boolean glasses) {
         List<HomeApps.Item> list = HomeApps.allInputs(c);
-        list.addAll(HomeApps.drawerShortcuts(c));
+        list.addAll(HomeApps.drawerShortcuts(c, glasses));
         return list;
     }
 
@@ -1957,7 +1976,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
         LOADER.execute(() -> {
             final List<HomeApps.Item> s = HomeApps.shelf(c, true);
             final List<HomeApps.Item> st = statusList(c);
-            final List<HomeApps.Item> d = drawerList(c);
+            final List<HomeApps.Item> d = drawerList(c, true);
             final List<HomeApps.Item> o = HomeApps.others(c);
             handler.post(() -> {
                 setShelf(s);
@@ -2224,6 +2243,27 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                     ? Ui.tr("O modo econômico não está disponível agora.", "Eco mode isn't available right now.")
                     : on ? Ui.tr("Modo econômico ligado: menos brilho e som, mais bateria.", "Eco mode is on: less brightness and sound, more battery.")
                     : Ui.tr("Modo econômico desligado.", "Eco mode is off.")));
+            return;
+        }
+        if (it.kind == HomeApps.SLEEP_TIMER) {
+            int next = Power.nextTimer(Power.left(Power.timerEnd(activity)), 1);
+            Power.setTimer(activity, next);
+            showToast(next == 0 ? Ui.tr("Timer para dormir desligado.", "Sleep timer off.")
+                    : Ui.tr("Timer para dormir: ", "Sleep timer: ") + Power.duration(next) + ".");
+            return;
+        }
+        if (it.kind == HomeApps.GLASSES_3D) {
+            boolean to3d = it.key.equals("glasses-3d");
+            Context app = activity.getApplicationContext();
+            LOADER.execute(() -> {
+                Rokid.State s = Rokid.setMode(app, to3d ? Rokid.MODE_3D : Rokid.MODE_2D);
+                handler.post(() -> {
+                    showToast(s == null ? Ui.tr("Não deu para falar com os óculos.", "Couldn't reach the glasses.")
+                            : s.is3d() != to3d ? Ui.tr("Os óculos não aceitaram essa mudança.", "The glasses didn't take that change.")
+                            : to3d ? Ui.tr("Óculos em 3D.", "The glasses are in 3D.") : Ui.tr("Óculos em 2D.", "The glasses are in 2D."));
+                    reload();   // the button now says the other way
+                });
+            });
             return;
         }
         if (it.kind == HomeApps.INPUTS) {
@@ -2896,7 +2936,8 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
 
     /**
      * Live TV (where there is one), HDMI Inputs and Settings: icon-only glass circles (light by day, smoked at night); the focused one turns
-     * white with a dark icon (the tvOS focus) and its name appears below it. On XGIMI's Play 6, the battery to their left.
+     * white with a dark icon (the tvOS focus) and its name appears below it. On XGIMI's Play 6 and the Rokid Station,
+     * the battery to their left.
      */
     private void drawLightButtons(Canvas c) {
         applyTone();
@@ -2909,6 +2950,7 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
             lBattery.setColor(ink);
             c.drawText(batteryText, right - iw - 10 * k - lBattery.measureText(batteryText), cy + Ui.halfCap(lBattery), lBattery);
         }
+        drawBattery(c);
         for (int i = 0; i < lightButtons.size(); i++) {
             RectF r = topRects[3 + i];
             float f = Ui.clamp(topFocus[3 + i].value), s = 1 + 0.1f * f, rad = r.width() / 2 * s;
@@ -2934,6 +2976,21 @@ final class HomeView extends ViewGroup implements Choreographer.FrameCallback, H
                 c.drawText(label, x, r.bottom + (40 + 4 * f) * k, lTip);
             }
         }
+    }
+
+    /** Rokid Station: the battery, left of the corner buttons (its level, and a bolt while plugged in). */
+    private void drawBattery(Canvas c) {
+        Power.Battery b = battery;
+        if (b == null || lightButtons.isEmpty()) return;
+        String text = b.level + "%";
+        float right = topRects[3].left - 28 * k, cy = L_BUTTON_CY * k;
+        int ink = tone(L_INK, 0xEBFFFFFF);
+        batteryPaint.setColor(ink);
+        float tw = batteryPaint.measureText(text);
+        c.drawText(text, right - tw, cy + Ui.halfCap(batteryPaint), batteryPaint);
+        String symbol = Power.symbol(b);
+        float sw = Symbols.width(getContext(), symbol, 26 * k);
+        Symbols.draw(getContext(), c, symbol, right - tw - 10 * k - sw / 2, cy, 26 * k, ink);
     }
 
     private boolean moveLight(int dx, int dy) {
