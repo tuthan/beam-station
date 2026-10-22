@@ -472,7 +472,10 @@ internal class DreamView(c: Context) : View(c), Choreographer.FrameCallback, Hom
         drawCaptions(canvas, up, corner)
     }
 
-    /** The fallback's slow Lissajous path, from this dream's own point on it, rounded so the digits stay sharp. */
+    /**
+     * Photo mode: the corner's and captions' slow Lissajous path, from this dream's own point on it, rounded so the
+     * digits stay sharp.
+     */
     private fun drift(up: Long) {
         val phase = 2 * PI * (up - startedAt) / 1000 / DRIFT_PERIOD_S + driftPhase
         driftX = Math.round((DRIFT_X * k * sin(phase)).toFloat())
