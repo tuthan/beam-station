@@ -1064,7 +1064,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
     /** Advances the day ⇄ night transition; true while it runs. */
     private fun tickNight(up: Long): Boolean {
         if (nightAt == 0L) return false
-        val t = Ui.clamp(((up - nightAt) / NIGHT_MS).toFloat())
+        val t = Ui.clamp((up - nightAt).toFloat() / NIGHT_MS)   // float division: a 2 s fade, not a jump at the end
         val to = if (nightTarget) 1f else 0f
         night = nightFrom + (to - nightFrom) * t * t * (3 - 2 * t)
         if (t >= 1) {
@@ -1340,7 +1340,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         shadows.draw(c, tmp, radius, SHADOW_BLUR * k, shadow)
         // White glass by day; smoked glass at night.
         scene.liquid(c, platterRect, radius, tone(0xFFFFFFFF.toInt(), SMOKE), tone(0.42f, 0.12f), tone(0.03f, 0.08f),
-            tone(30, 34) * k, tone(22, 28) * k, tone(0.65f, 0.95f), 1f)
+            tone(30f, 34f) * k, tone(22f, 28f) * k, tone(0.65f, 0.95f), 1f)   // band and refraction: the float tone
     }
 
     /** The quotes row's text and sizes, for one set of coins, prices and text size. */
