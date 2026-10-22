@@ -18,20 +18,20 @@ Open source. Built with Claude Code. One button to undo.
 - **No ads.** No sponsored rows, banners or autoplaying promos. Not one.
 - **Your apps, front and center.** The streaming apps you actually use, on a glass shelf. Pick them and their order right on the TV.
 - **Trending, not sponsored.** Three fresh picks every hour from what's trending this week and the latest releases, only from apps you already have. Movies and Shows get their own tabs.
-- **Weather and markets, one press away.** The hour-by-hour forecast, sunrise and sunset, and live crypto prices.
+- **Weather and markets, one press away.** The hour-by-hour forecast, sunrise and sunset, and live crypto prices (off until you turn them on).
 - **Light by day, dark by night.** It follows your city's real sunset, the way your phone does.
 - **A screensaver to match.** Full-screen photos of the picks with a big glass clock.
-- **Fast.** 60 fps, every frame in 16.6 ms, on the TV's own chip. The home screen uses 96 MB of memory instead of 242 MB (−60%).<br><sub>Measured on a 98″ TCL Google TV running Android 14.</sub>
+- **Fast.** Drawn by hand on one Canvas, made for 60 fps on the device's own chip.
 - **Set up on the TV.** Language, your city, temperature, theme, the weather and prices cards, which coins, and the apps on the shelf, in Free My TV's own settings.
 - **Safe.** No root. Nothing is uninstalled. One button brings back the factory home screen.
 
 ## Install
 
-About ten minutes. You need a Google TV or Android TV (Android 9 or newer) and a computer on the same Wi-Fi.
+About ten minutes. You need the XGIMI Play 6 or the Rokid Station and a computer on the same Wi-Fi. (On any other Google TV or Android TV, Android 9 or newer, either build runs as plain Free My TV.)
 
 ### The easy way: an AI assistant
 
-1. **On the TV**, turn on developer mode: Settings → System → About → press *Android TV OS build* 7 times. Then Settings → System → Developer options → turn on **USB debugging**. Write down the TV's IP address (Settings → Network & Internet).
+1. **On the device**, write down its IP address. Both already have network ADB on port 5555 (the XGIMI takes any computer without asking; the Station asks once). On another TV, turn on developer mode first: Settings → System → About → press *Android TV OS build* 7 times, then Settings → System → Developer options → turn on **USB debugging**.
 2. **On your computer**, open an AI coding assistant ([Claude Code](https://claude.com/claude-code), Codex or Antigravity) and say:
    > Install Free My TV (github.com/simbasjungles/free-my-tv) on my TV at 192.168.1.50. I live in Lisbon.
 
@@ -57,10 +57,6 @@ About ten minutes. You need a Google TV or Android TV (Android 9 or newer) and a
    ```bash
    adb connect 192.168.1.50:5555
    adb install -r BeamHome.apk     # or StationHome.apk
-   ```
-   On TCL TVs, also let it run in the background (TCL blocks it by default, and the switch never starts):
-   ```bash
-   adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"
    ```
 5. **On the TV**, open *Free My TV* → *Home Screen* → *Free My TV*.
 
@@ -115,17 +111,10 @@ To remove it for good, switch to *Original* first, then uninstall *Free My TV* (
 
 - It becomes the home screen and the screensaver.
 - It turns off, without uninstalling:
-  - the stock home screen and screensaver;
-  - Google TV's recovery home, Play Games and YouTube Music;
-  - on TCL TVs, the TCL Channel, messages, store demo, hotel menu, manuals, mirroring and logging apps;
-  - on Philco TVs, AI PONT (promo channels and app downloads) and the manual;
-  - on Multilaser TVs, Anoki's screen-content recognition (ACR), the store demo and the manual;
-  - on KTC-made TVs (NextStar), Anoki's screen-content recognition (ACR), the store demo and the manual;
-  - Google Assistant, only with `disable_assistant=true`;
-  - on XGIMI projectors, XGIMI's reporting, ads, factory test and app market apps, only with `disable_telemetry=true`;
-  - on the Rokid Station, nothing: its system won't let apps be turned off, so it only takes the home screen.
-- On TCL TVs, the remote's Netflix, YouTube and Prime buttons keep working through a small accessibility service that only reads those buttons. Pick what each one opens in *Free My TV* → *Remote Buttons*; *Original* turns the service off. On Vestel-made TVs (F&U and other store brands) and Xiaomi (Formovie) projectors the same goes for the Netflix button, and on KTC-made TVs (NextStar) for the Tabii button. On Sony TVs, the BRAVIA CORE, Netflix, Disney+, Prime Video, YouTube and Crunchyroll buttons can each open the app you pick, or keep Sony's default.
-- Picture, sound, inputs, remote pairing, Google services and the Play Store are on a protected list, checked before every change.
+  - on XGIMI projectors, XGIMI Home (XGIMI's chooser opens it whenever it is on), and XGIMI's reporting, ads, factory test and app market apps only with `disable_telemetry=true`;
+  - on the Rokid Station, nothing: its system won't let apps be turned off, so it only takes the home screen;
+  - on any other TV, the stock home screen and screensaver, Google TV's recovery home, Play Games and YouTube Music, and Google Assistant only with `disable_assistant=true`.
+- Google services, the Play Store, the system UI and the Rokid Station's own apps are on a protected list, checked before every change, and an app that runs a TV input (HDMI, a tuner) is never turned off.
 - Apps that saved a Wi-Fi network are never turned off, since Android would erase the network. If the TV's first setup saved yours, the switch asks you to forget the network and connect again in Settings first (saved networks out of range don't show there; Claude Code can remove them).
 
 ## Make it yours
@@ -156,7 +145,6 @@ It's your code, and Claude Code finds its way around it. Try:
 | [`DreamView.java`](app/src/io/freemytv/DreamView.java) | The screensaver |
 | [`SettingsActivity.java`](app/src/io/freemytv/SettingsActivity.java) | The settings screen (the app's icon) |
 | [`Prefs.java`](app/src/io/freemytv/Prefs.java) | Settings changed on the TV |
-| [`RemoteKeys.java`](app/src/io/freemytv/RemoteKeys.java) | The TCL remote's app buttons |
 | [`Watchdog.java`](app/src/io/freemytv/Watchdog.java) | The safety net |
 | [`Xgimi.java`](app/src/io/freemytv/Xgimi.java) | XGIMI projectors: focus, keystone, speaker, eco, battery, language |
 | [`Rokid.java`](app/src/io/freemytv/Rokid.java) | The Rokid glasses' display service |
@@ -173,7 +161,7 @@ No accounts, no analytics, no tracking. The app talks to TMDB, Open-Meteo (with 
 - Links to the titles in the streaming apps by [Watchmode](https://api.watchmode.com/).
 - Weather data by [Open-Meteo.com](https://open-meteo.com/) (CC BY 4.0). Prices from the [Binance](https://www.binance.com/) public API.
 - Icons: [Material Symbols](https://fonts.google.com/icons) (Apache 2.0). Font: [Inter](https://rsms.me/inter/) (SIL OFL 1.1). Coin logos: [cryptocurrency-icons](https://github.com/spothq/cryptocurrency-icons) (CC0).
-- Not affiliated with Google, TCL, XGIMI, Rokid or any streaming service. App names and logos belong to their owners.
+- Not affiliated with Google, XGIMI, Rokid or any streaming service. App names and logos belong to their owners.
 
 ## License
 

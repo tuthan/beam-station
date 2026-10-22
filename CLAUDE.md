@@ -27,20 +27,14 @@ before you do it, and let them do the taps on the TV.
 5. **Build:** `./build.sh` → `BeamHome.apk` (XGIMI), or `DEVICE=rokid ./build.sh` → `StationHome.apk` (Rokid Station;
    `device=rokid` in `config.properties` does the same). Keep `freemytv.keystore`: updates must be signed with the same key.
 6. **Install:** `adb connect <IP>:5555`. The TV asks *Allow USB debugging?*: tell them to accept and tick *Always
-   allow*. Then `adb install -r BeamHome.apk` (or `StationHome.apk`). On TCL, also `adb shell "appops set io.freemytv AUTO_START allow || appops set io.freemytv APP_AUTO_START allow"`
-   (some firmware calls the operation `APP_AUTO_START`; this tries both), then `adb shell appops write-settings`
-   (app-ops reach the disk lazily, and a restart soon after the `set` drops it):
-   TCL's `TclAppBoot` blocks background jobs by default, so the switch (and the watchdog) never run. The log shows
-   `forbid bind service ... ModeJob`. Some TCL firmware has neither (a 2024 MediaTek Google TV, Android 14, has no
-   `TclAppBoot`): both names answer `Unknown operation string`, and nothing needs allowing.
+   allow*. Then `adb install -r BeamHome.apk` (or `StationHome.apk`).
    On a Mac, `adb connect` can fail with `No route to host` while the TV answers (`nc -z <IP> 5555` connects): macOS's
    Local Network privacy blocks the adb server that adb starts in the background. Start it from the same terminal
    instead (`adb kill-server; adb nodaemon server &`), or allow the terminal app under System Settings → Privacy &
    Security → Local Network.
-7. **Tell them what the switch does** before they make it: the home screen and screensaver change, a short list of
-   promo apps is turned off (never uninstalled), and *Original* brings it all back. On TCL, the remote's Netflix,
-   YouTube and Prime buttons keep working through a small accessibility service that only reads those buttons
-   (*Free My TV* → *Remote Buttons* picks what each opens); *Original* turns it off.
+7. **Tell them what the switch does** before they make it: the home screen and screensaver change, the stock home
+   screen is turned off (never uninstalled; on the Rokid Station nothing is turned off), and *Original* brings it all
+   back.
 8. **They switch on the TV:** *Free My TV* → *Home Screen* → *Free My TV*. The app uses the TV's own ADB on
    127.0.0.1 with its own key, so the TV asks once more to allow debugging. Don't switch modes from the computer.
    If the TV's Wi-Fi was saved during its first setup, the switch stops before changing anything and asks them to
@@ -50,9 +44,9 @@ before you do it, and let them do the taps on the TV.
    `adb shell cmd wifi forget-network <id>`.
 9. **Check:** `adb logcat -s FreeMyTV` shows what the switch did.
 
-## Adapting it to another TV
+## The two devices
 
-Read first, change after. Read-only commands that tell you what the TV has:
+Read first, change after. Read-only commands that tell you what the device has:
 
 ```bash
 adb shell getprop ro.product.brand; adb shell getprop ro.product.model; adb shell getprop ro.build.version.release
@@ -62,14 +56,8 @@ adb shell settings get secure screensaver_components; adb shell settings get sec
 adb shell pm list packages -s     # system apps (-3 for the ones they installed)
 ```
 
-Then, in the code:
-
-- `HomeMode.DEBLOAT`: add the brand's promo, demo, store-mode and telemetry apps, one comment per line. Only those.
-- `HomeMode.PROTECTED`: add the brand's system pieces: picture, sound, inputs and HDMI-CEC, the tuner and live TV,
-  remote and Bluetooth pairing, setup, updates, system UI. When in doubt, protect it.
-- `HomeApps.SHELF`, `LIVE_TV_APPS` and `HIDDEN`: the shelf apps, the brand's live TV app, apps to hide from All Apps.
-- Build, install, have them switch on the TV, read `adb logcat -s FreeMyTV`, then have them switch back to
-  *Original* once and confirm everything returned.
+After a change to the switch: build, install, have them switch on the device, read `adb logcat -s FreeMyTV`, then
+have them switch back to *Original* once and confirm everything returned.
 
 XGIMI projectors (China ROM, GMUI): their chooser (`xgimiframeworkui`) opens XGIMI Home whenever it is on, whatever
 the default home, so Free My TV mode turns off `com.xgimi.home` and nothing else (plus `HomeMode.PRIVACY`, only with
@@ -102,8 +90,8 @@ screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
 - Two devices, one tree. `build.sh` takes the device from `DEVICE` in the environment, else `device=` in
   `config.properties`, else `xgimi` (anything else stops it), writes `Config.DEVICE` and `Config.APP_NAME`, links
   `app/devices/<device>/res` over `app/res` and adds `app/devices/<device>/assets` to `app/assets`, and names the APK
-  `BeamHome.apk` or `StationHome.apk`. A device's folder holds its icon and banner (`res/drawable-nodpi`), its strings
-  (`res/values`, `res/values-ru`: the name and the remote buttons service's description), its settings mark
+  `BeamHome.apk` or `StationHome.apk`. A device's folder holds its icon and banner (`res/drawable-nodpi`), its name
+  (`res/values/strings.xml`), its settings mark
   (`assets/symbols/mark.png`) and its day and night backgrounds (`assets/backgrounds`); every other symbol is shared
   in `app/assets/symbols`. `python3 tools/make_art.py <device>` and `python3 tools/make_backgrounds.py <device>` draw
   them (each has a `DEVICES` table: name, gradient, mark, background colors).
@@ -128,12 +116,13 @@ screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
   by a try/catch), `BitmapShader.setFilterMode` (guarded) and `Recording.Node` should come up.
 - The home screen is drawn by hand on one Canvas (`HomeView`); the glass and the sky are AGSL shaders (`Shaders`,
   Android 13+, with a fallback for 9 to 12). Keep it at 60 fps: no allocations in `onDraw`, no work on the UI thread.
-- Some TVs draw their UI at 1280×720 on a 1080p panel (TCL's 1 GB models: `ro.surface_flinger.max_graphics_width`
+- Some TVs draw their UI at 1280×720 on a 1080p panel (some 1 GB models: `ro.surface_flinger.max_graphics_width`
   and `_height`, `ro.config.low_ram`). There every pixel and every MB counts: `Backdrop` builds its images at the UI's
   size (and the picks use TMDB's w1280), and the shelf logos have a copy at the resting size and one at the focused
   size, so both draw pixel for pixel.
 - `HomeMode` runs every switch as a background job (`ModeJob`) in the main process; the UI is in the `:home`
-  process. `Watchdog` goes back to the stock home screen after 3 crashes in 5 minutes.
+  process. `Watchdog` goes back to the stock home screen after 3 crashes in 5 minutes. *Original* also takes an older
+  build's remote buttons service (`RemoteKeyService`) out of `enabled_accessibility_services`, if it is still listed.
 - After every `appops set` over ADB, run `appops write-settings` as its own shell call: app-ops reach the disk lazily,
   and a restart soon after the `set` drops it.
 - On-screen text: `Ui.tr("pt", "en")`, with the Spanish, German and Russian in `Spanish.java`, `German.java` and
@@ -141,24 +130,7 @@ screens (`Wifi`, `Bluetooth`), since Rokid's are buried in its Settings.
   come from those files too (patterns for the parts built at runtime). Add them all. Comments in English, short, only where the why
   isn't obvious.
 - Settings come from `config.properties` through the generated `out/gen/io/freemytv/Config.java` (never edit that).
-  What the person changes on the TV (`Prefs`: Home Settings, Shelf, Remote Buttons) wins over those first values.
-- The remote's app buttons (`RemoteKeys`, `RemoteKeyService`) use each brand's key codes: they run only on TCL,
-  Vestel, KTC (NextStar) and Sony TVs and Formovie projectors, the service is on only in Free My TV mode, and *Original* takes it out of the enabled accessibility
-  services. The system waits for the service on every key, so it lives alone in the `:keys` process: what it reads is
-  in `remote-keys.txt` (`Prefs.keyApp`), never in SharedPreferences, and `onKeyEvent` does no heavy work.
-  The service is direct boot aware, since Android 11 TCL sets skip other accessibility services at boot, so `:keys` can
-  start before the storage is unlocked: `Prefs.init` then leaves SharedPreferences alone until `ACTION_USER_UNLOCKED`.
-  Vestel (F&U and other store brands; MediaTek, Android TV 14 tested) maps its Netflix button to `KEYCODE_STEM_1`, a
-  global key (`dumpsys window policy` lists them) that the key filter sees first; its YouTube, Prime Video and Google
-  Play buttons stay with the system. The stock lists needed no Vestel entries.
-  KTC (NextStar; MediaTek, Google TV 14 tested) maps its Tabii button to `KEYCODE_BUTTON_8`, also a global key, which
-  KTC's own hot-key receiver would open Tabii with; its Netflix, YouTube and Prime Video buttons stay with the system.
-  Sony (BRAVIA VH22, Android TV 12 tested) sends `KEYCODE_BUTTON_9` for its BRAVIA CORE, Disney+, Prime Video,
-  YouTube and Crunchyroll buttons and `KEYCODE_BUTTON_4` for Netflix, global keys for `com.sony.dtv.sonyvendorservice`;
-  only the scan code tells them apart, so `Prefs` keys them as `SONY_KEY` + scan code. "Sony default" (empty) leaves
-  the key to the TV. Sony ships its own Apple TV build, `com.apple.atve.sony.appletv`.
-  Xiaomi projectors made by Formovie (Fengmi; L1, MediaTek, Google TV 14 tested) send the same `KEYCODE_STEM_1` for
-  Netflix (`RemoteKeys.STEM_NETFLIX`); their YouTube button goes to MediaTek's `GlobalKeyReceiver` and stays with the system.
+  What the person changes on the TV (`Prefs`: Home Settings, Shelf) wins over those first values.
 - After any change, `./build.sh` and `DEVICE=rokid ./build.sh` must end with `Built BeamHome.apk` and
   `Built StationHome.apk`.
 
