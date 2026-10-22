@@ -117,7 +117,14 @@ object Main {
             ours.remove(cmd.task)
             "OK"
         }
+        Command.Front -> {
+            // AR's own entry (single task): its task comes to the front, with an intent that asks for nothing.
+            val started = run("am", "start", "--display", "0", "-n", AR_ENTRY, "-f", "0x10000000")
+            if (started.contains("Error")) "ERR " + started.lines().firstOrNull { it.contains("Error") }.orEmpty() else "OK"
+        }
     }
+
+    private const val AR_ENTRY = "io.github.tuthan.stationar/.EnterAr"
 
     // MARK: - Tasks
 

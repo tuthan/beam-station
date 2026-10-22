@@ -52,8 +52,12 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     private var holding = false
     private var filterOn = false
 
+    /** The glasses' display, which every app screen copies. */
+    private val size by lazy { VirtualDisplaySource.glassesSize(context) }
+
     /** The source for screen `name` (`app:<package>`), made once (GL thread, from the renderer). */
-    fun source(name: String): VirtualDisplaySource = sources.getOrPut(name) { VirtualDisplaySource(name, context, this) }
+    fun source(name: String): VirtualDisplaySource =
+        sources.getOrPut(name) { VirtualDisplaySource(name, context, this, size) }
 
     /** App screens that exist now. */
     val count: Int get() = sources.values.count { it.displayId >= 0 }
@@ -77,6 +81,7 @@ class AppScreens(private val context: Context, private val listener: Listener) :
                     moved = true
                 }
                 if (moved) {
+                    helper.call(Command.Front)
                     focusedDisplay = -1
                     focusNow()
                 }
@@ -154,8 +159,8 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         if (display == focusedDisplay) return
         // A corner of the display: the touch is cancelled at once, and corners hold the least. Right after an app starts
         // its window may not be there to take the touch yet: a few more tries.
-        val focus = if (display == 0) Command.Focus(0, 1, 1)
-            else Command.Focus(display, VirtualDisplaySource.WIDTH - 2, VirtualDisplaySource.HEIGHT - 2)
+        val focus = if (display == 0 || src == null) Command.Focus(0, 1, 1)
+            else Command.Focus(display, src.size.width - 2, src.size.height - 2)
         var ok = false
         for (attempt in 1..FOCUS_TRIES) {
             ok = helper.call(focus) != null

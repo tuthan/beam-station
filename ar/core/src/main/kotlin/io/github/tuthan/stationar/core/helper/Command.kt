@@ -36,6 +36,12 @@ sealed class Command {
     /** Closes a root task (an app leaving its screen). */
     data class RemoveTask(val task: Int) : Command()
 
+    /**
+     * Brings AR back to the front of the glasses' display, after a task that covered it was moved into an app's
+     * screen (Android doesn't resume it by itself then, and an app in the background may not start activities).
+     */
+    object Front : Command()
+
     fun encode(): String = when (this) {
         Ping -> "PING"
         Tasks -> "TASKS"
@@ -44,6 +50,7 @@ sealed class Command {
         is Key -> "KEY $code"
         is MoveTask -> "MOVE_TASK $task $display"
         is RemoveTask -> "REMOVE_TASK $task"
+        Front -> "FRONT"
     }
 
     companion object {
@@ -70,6 +77,7 @@ sealed class Command {
                     MoveTask(int(1, 0..Int.MAX_VALUE) ?: return null, int(2, 0..1000) ?: return null)
                 }
                 "REMOVE_TASK" -> if (p.size == 2) RemoveTask(int(1, 0..Int.MAX_VALUE) ?: return null) else null
+                "FRONT" -> if (p.size == 1) Front else null
                 else -> null
             }
         }

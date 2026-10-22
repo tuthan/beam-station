@@ -18,7 +18,7 @@ class CommandCodecTest {
             Command.Ping, Command.Tasks, Command.Launch(2, "org.videolan.vlc/.StartActivity"),
             Command.Launch(3, "org.jellyfin.androidtv/org.jellyfin.androidtv.ui.startup.StartupActivity"),
             Command.Focus(2, 640, 360), Command.Focus(0, 0, 0), Command.Key(4), Command.MoveTask(117, 2),
-            Command.RemoveTask(117),
+            Command.RemoveTask(117), Command.Front,
         )
         for (c in all) assertEquals(c, Command.decode(c.encode()), c.encode())
     }
@@ -28,7 +28,7 @@ class CommandCodecTest {
         for (t in listOf(
             "", "ping", "PING x", "LAUNCH 2", "LAUNCH 0 org.videolan.vlc/.StartActivity", "LAUNCH 2 org.videolan.vlc",
             "LAUNCH 2 org.videolan.vlc/.A;reboot", "LAUNCH 2 org.videolan.vlc/.A extra", "FOCUS 2 640", "FOCUS -1 0 0",
-            "KEY", "KEY 0", "KEY 99999", "MOVE_TASK x 2", "REMOVE_TASK", "SHELL rm -rf /",
+            "KEY", "KEY 0", "KEY 99999", "MOVE_TASK x 2", "REMOVE_TASK", "FRONT 1", "SHELL rm -rf /",
         )) assertNull(Command.decode(t), t)
     }
 
