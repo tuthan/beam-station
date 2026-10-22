@@ -128,4 +128,26 @@ class SceneTest {
         }
         assertNull(Presets.layout("nope"))
     }
+
+    @Test
+    fun aConnectingLaptopTakesTheCardsPlace() {
+        val one = assertNotNull(Presets.place(Presets.welcome(), "laptop:0", 1920, 1080))
+        assertEquals(listOf("laptop:0"), one.screens.map { it.source })
+        assertEquals(-(Presets.ONE_TO_ONE / 2 + 0.5f), one.screens[0].yaw, 1e-4f)
+        val wider = assertNotNull(Presets.place(one, "laptop:1", 2560, 1600))
+        assertEquals(listOf("laptop:0", "laptop:1"), wider.screens.map { it.source })
+        assertEquals(1.6f, wider.screens[1].aspect, 1e-4f)
+        assertEquals(58.93f, wider.screens[1].width, 0.01f)
+        // Already there: nothing changes.
+        assertEquals(wider, Presets.place(wider, "laptop:1", 2560, 1600))
+        val wide = assertNotNull(Presets.place(Presets.welcome(), "wide", 3840, 1080))
+        assertEquals(listOf("wide:0", "wide:1"), wide.screens.map { it.source })
+        assertEquals(16f / 9f, wide.screens[0].aspect, 1e-4f)
+        // A card out of the way stays.
+        val apart = Layout(mutableListOf(ScreenSpec("card", 0f, 30f, 30f)))
+        assertEquals(2, assertNotNull(Presets.place(apart, "laptop:0", 1920, 1080)).screens.size)
+        val full = Layout(MutableList(Layout.MAX_SCREENS) { ScreenSpec("app:a$it", 0f, 40f) })
+        assertNull(Presets.place(full, "laptop:0", 1920, 1080))
+        assertNull(Presets.place(Presets.welcome(), "app:x", 1920, 1080))
+    }
 }
