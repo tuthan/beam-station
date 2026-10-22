@@ -64,6 +64,8 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         background {
             if (closed.get()) return@background
             if (!ensureHelper()) return@background
+            // The screen went while the helper started: nothing to open.
+            if (source.displayId < 0) return@background
             val component = launchComponent(pkg)
             if (component == null) {
                 status("${label(pkg)} has no TV screen to open")
@@ -85,6 +87,12 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         // The GL thread mustn't wait for the helper (it may be busy for a while, starting): the worker closes the task,
         // then the display. Opening the same app again makes a new source, after this one is done.
         sources.remove(source.name, source)
+        if (source.task < 0) {
+            // No app on it yet (the helper may still be waiting for the Station's approval, for up to a minute): there
+            // is no task to close first, and a launch still to come fails on a display that's gone.
+            source.release()
+            return
+        }
         val queued = background {
             val t = source.task
             if (t >= 0 && helper.running) helper.call(Command.RemoveTask(t))

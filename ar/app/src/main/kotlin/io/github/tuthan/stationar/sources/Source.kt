@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
 import io.github.tuthan.stationar.render.Gl
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * What a screen shows, as a GL texture. [attach], [update] and [detach] run on the GL thread; [update] runs every
@@ -47,8 +48,8 @@ abstract class Source(val name: String) {
 abstract class SurfaceSource(name: String, private val width: Int, private val height: Int) : Source(name) {
     override val external = true
     private var surfaceTexture: SurfaceTexture? = null
-    @Volatile private var frames = 0
-    private var seen = 0
+    /** Frames queued and not yet taken: each [SurfaceTexture.updateTexImage] takes one. */
+    private val pending = AtomicInteger()
 
     /** The Surface to draw into, null before [attach] and after [detach]. */
     @Volatile var surface: Surface? = null
@@ -59,11 +60,12 @@ abstract class SurfaceSource(name: String, private val width: Int, private val h
         surface?.release()
         surfaceTexture?.release()
         texture = Gl.textureExternal()
+        pending.set(0)
         val st = SurfaceTexture(texture)
         st.setDefaultBufferSize(width, height)
         // Not on the main thread (the GL thread has no Looper, so that's where it would land): a busy main thread would
         // freeze every laptop and app screen.
-        st.setOnFrameAvailableListener({ frames++ }, frameHandler)
+        st.setOnFrameAvailableListener({ pending.incrementAndGet() }, frameHandler)
         surfaceTexture = st
         val s = Surface(st)
         surface = s
@@ -77,11 +79,12 @@ abstract class SurfaceSource(name: String, private val width: Int, private val h
     protected abstract fun onSurfaceGone()
 
     override fun update() {
-        val f = frames
-        if (f == seen) return
-        seen = f
+        // Every queued frame is taken, the newest shown: one left in the queue would hold its buffer, and with the
+        // queue full the producer (the decoder, the app) stops for good.
+        var n = pending.getAndSet(0)
+        if (n == 0) return
         val st = surfaceTexture ?: return
-        st.updateTexImage()
+        while (n-- > 0) st.updateTexImage()
         st.getTransformMatrix(texMatrix)
         live = true
     }

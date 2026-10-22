@@ -665,7 +665,11 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     private val clock = SimpleDateFormat("HH:mm", Locale.getDefault())
 
     private fun updateHud() {
-        (pairingLine ?: appLine)?.let {
+        pairingLine?.let {
+            glView.queueEvent { renderer.setHud(it, overPanel = true) }
+            return
+        }
+        appLine?.let {
             glView.queueEvent { renderer.setHud(it) }
             return
         }

@@ -84,6 +84,8 @@ class Renderer(
     private val hudMesh = ScreenMesh()
     private val hudModel = FloatArray(16)
     @Volatile private var hudLine = ""
+    /** The HUD shows over the panel too (a pairing PIN mustn't hide behind calibration, say). */
+    @Volatile private var hudOverPanel = false
 
     private val panelView = PanelView()
     /** The panel's picture to draw at the next frame, and the last one drawn (again after a lost context). */
@@ -177,7 +179,7 @@ class Renderer(
             Mat4.multiply(mvp, viewProjection, panelModel)
             p.bitmap.draw(panelMesh.vertices, panelMesh.count, mvp, panelView.texture, Gl.FLIP_V, 0f, 0f, 1f, 1f, 1f)
         }
-        if (hud.visible && !panelOpen) {
+        if (hud.visible && (!panelOpen || hudOverPanel)) {
             // Head-locked: no view matrix.
             Mat4.multiply(mvp, projection, hudModel)
             p.bitmap.draw(hudMesh.vertices, hudMesh.count, mvp, hud.texture, Gl.FLIP_V, 0f, 0f, 1f, 1f, 0.95f)
@@ -353,9 +355,10 @@ class Renderer(
 
     val focused: Int get() = focus.focused
 
-    /** The HUD's line, drawn at the next frame. */
-    fun setHud(line: String) {
+    /** The HUD's line, drawn at the next frame; `overPanel`: shown while the panel is open too. */
+    fun setHud(line: String, overPanel: Boolean = false) {
         hudLine = line
+        hudOverPanel = overPanel
         // Head-locked near the top of the view.
         Mat4.setRotationX(hudModel, HUD_PITCH)
     }
