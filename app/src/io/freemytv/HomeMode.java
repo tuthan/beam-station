@@ -80,6 +80,9 @@ final class HomeMode {
         "com.mediatek.tv.retaildemo", "com.electronic.manual",                        // store demo, manual
     };
 
+    /** XGIMI projectors, where the Wi-Fi screen was made (their own is Chinese only). */
+    static final boolean XGIMI = "XGIMI".equalsIgnoreCase(Build.BRAND);
+
     /** The voice assistant, only with disable_assistant=true in config.properties (the mic button stops working). */
     static final String[] ASSISTANT = {"com.google.android.katniss", "com.android.hotwordenrollment.okgoogle"};
 

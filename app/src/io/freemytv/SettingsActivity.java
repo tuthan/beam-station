@@ -16,6 +16,7 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.text.InputType;
 import android.text.StaticLayout;
 import android.text.TextPaint;
 import android.text.TextUtils;
@@ -29,12 +30,15 @@ import android.widget.EditText;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Set;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Free My TV's settings (the app's icon, "All Apps", or the gear on the home screen), in the style of Apple TV's
@@ -112,7 +116,11 @@ public class SettingsActivity extends Activity {
     }
 
     static final class SettingsView extends View implements Choreographer.FrameCallback {
-        private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5;
+        private static final int MAIN = 0, HOME_CHOICE = 1, HOME_SETTINGS = 2, REMOTE_KEYS = 3, PICKER = 4, SHELF_EDIT = 5,
+                WIFI = 6, WIFI_FORGET = 7;
+        /** The main screen's rows (Remote Buttons, then TV Settings, then Wi-Fi), shown in the order of mainRows(). */
+        private static final int REMOTE_ROW = 4, TV_ROW = 5, WIFI_ROW = 6;
+        private static final String[] WIFI_BARS = {"wifi_1", "wifi_1", "wifi_2", "wifi_3", "wifi_4"};
         private static final float LIST_ROW_H = 68, LIST_ROW_GAP = 6;
         private static final int PICK_VISIBLE = 9;
         private static final float LIST_X = 1000, LIST_R = 1824, LIST_TOP = 186, ROW_H = 74, ROW_GAP = 8, CHOICE_H = 104;
@@ -137,6 +145,13 @@ public class SettingsActivity extends Activity {
         private boolean hasKey;
         private int screen = MAIN, focus;
         private boolean running, okDown, backDown, wasBusy;
+        private final int[] mainRows = mainRows();
+        // Wi-Fi (XGIMI projectors): what the projector sees, the line under the list, the network picked to forget.
+        private Wifi.Status wifi;
+        private String wifiLine = "";
+        private Wifi.Network wifiPicked;
+        private boolean wifiBusy;
+        private final ExecutorService wifiWork = Executors.newSingleThreadExecutor();
         private StaticLayout errorLayout;   // the last error, wrapped (rebuilt only when it changes)
         private String errorShown;
         private final Spoken spoken;
@@ -163,6 +178,15 @@ public class SettingsActivity extends Activity {
                 wasBusy = nowBusy;
                 invalidate();
                 handler.postDelayed(this, busy() ? 500 : 2000);
+            }
+        };
+
+        /** While the Wi-Fi screen is open: a new scan every 15 s. */
+        private final Runnable wifiScan = new Runnable() {
+            @Override public void run() {
+                if (!running || screen != WIFI) return;
+                refreshWifi(true);
+                handler.postDelayed(this, 15_000);
             }
         };
 
@@ -208,10 +232,23 @@ public class SettingsActivity extends Activity {
                                 : freeActive() ? "Free My TV" : Ui.tr("Original", "Original");
                         return Ui.tr("Início, ", "Home Screen, ") + value;
                     }
+                    if (mainRow(row) == WIFI_ROW) return Ui.tr("Wi-Fi", "Wi-Fi") + ", " + wifiSummary();
                     String[] names = {Ui.tr("Tela de Descanso, ver agora", "Screensaver, preview"), Ui.tr("Ajustes do Início", "Home Settings"),
                             Ui.tr("Prateleira", "Shelf"), Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings")};
                     int at = mainRow(row) - 1;
                     return at < names.length ? names[at] : "";
+                }
+                case WIFI: {
+                    int at = pickScroll + row;
+                    if (at == 0) return Ui.tr("Wi-Fi", "Wi-Fi") + ", " + wifiOnOff();
+                    Wifi.Network n = wifiNet(at);
+                    if (n == null) return "";
+                    String value = netValue(n);
+                    return n.ssid + (value.isEmpty() ? "" : ", " + value) + ", " + at + Ui.tr(" de ", " of ") + wifi.networks.size();
+                }
+                case WIFI_FORGET: {
+                    String[][] rows = forgetRows();
+                    return row < rows.length ? rows[row][0] + ", " + rows[row][1] : "";
                 }
                 case HOME_CHOICE: {
                     String name = row == 0 ? "Free My TV, " + Ui.tr("sem anúncios, com a tela de descanso nova", "no ads, with the new screensaver")
@@ -249,7 +286,7 @@ public class SettingsActivity extends Activity {
             if (screen == MAIN) {
                 top = LIST_TOP + row * (ROW_H + ROW_GAP);
                 height = ROW_H;
-            } else if (screen == HOME_CHOICE) {
+            } else if (screen == HOME_CHOICE || screen == WIFI_FORGET) {
                 top = LIST_TOP + 20 + row * (CHOICE_H + ROW_GAP);
                 height = CHOICE_H;
             } else {
@@ -266,6 +303,8 @@ public class SettingsActivity extends Activity {
             startedAt = SystemClock.uptimeMillis();
             lastNanos = 0;
             handler.post(poll);
+            if (screen == WIFI) handler.post(wifiScan);
+            else if (HomeMode.XGIMI) refreshWifi(false);
             Choreographer.getInstance().postFrameCallback(this);
             spoken.readAgain();
         }
@@ -273,6 +312,7 @@ public class SettingsActivity extends Activity {
         void pause() {
             running = false;
             handler.removeCallbacks(poll);
+            handler.removeCallbacks(wifiScan);
             Choreographer.getInstance().removeFrameCallback(this);
         }
 
@@ -330,15 +370,34 @@ public class SettingsActivity extends Activity {
             return HomeMode.FREE.equals(state.optString("mode")) && !state.optBoolean("homeReverted");
         }
 
-        /** The main screen's row at position i: Remote Buttons (4) is left out where the remote's buttons can't be reached. */
+        /** Remote Buttons only where the remote's buttons can be reached; Wi-Fi on XGIMI projectors, before TV Settings. */
+        private static int[] mainRows() {
+            List<Integer> rows = new ArrayList<>(java.util.Arrays.asList(0, 1, 2, 3));
+            if (RemoteKeys.supported()) rows.add(REMOTE_ROW);
+            if (HomeMode.XGIMI) rows.add(WIFI_ROW);
+            rows.add(TV_ROW);
+            int[] out = new int[rows.size()];
+            for (int i = 0; i < out.length; i++) out[i] = rows.get(i);
+            return out;
+        }
+
+        /** The main screen's row at position i. */
         private int mainRow(int i) {
-            return i >= 4 && !RemoteKeys.supported() ? i + 1 : i;
+            return mainRows[i];
+        }
+
+        /** Where a main screen row is (0 if it isn't shown). */
+        private int mainIndex(int row) {
+            for (int i = 0; i < mainRows.length; i++) if (mainRows[i] == row) return i;
+            return 0;
         }
 
         private int rowCount() {
             switch (screen) {
-                case MAIN: return RemoteKeys.supported() ? 6 : 5;
-                case HOME_CHOICE: return 2;
+                case MAIN: return mainRows.length;
+                case HOME_CHOICE:
+                case WIFI_FORGET: return 2;
+                case WIFI: return Math.min(PICK_VISIBLE, 1 + wifiCount());
                 case HOME_SETTINGS: return settingLabels().length;
                 case PICKER: return Math.min(PICK_VISIBLE, pickLabels.size());
                 case SHELF_EDIT: return Math.min(PICK_VISIBLE, shelfRows.size());
@@ -370,7 +429,8 @@ public class SettingsActivity extends Activity {
             c.drawText(Ui.tr("Início e tela de descanso da TV", "Your TV's home screen and screensaver"), cx, 660 * k, subtitle);
             c.drawText(versionName(getContext()), cx, 704 * k, version);
 
-            if (screen == MAIN) drawMain(c, seconds); else if (screen == HOME_CHOICE) drawChoice(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c); else drawList(c);
+            if (screen == MAIN) drawMain(c, seconds); else if (screen == HOME_CHOICE) drawChoice(c); else if (screen == PICKER) drawPicker(c); else if (screen == SHELF_EDIT) drawShelfEditor(c);
+            else if (screen == WIFI) drawWifi(c); else if (screen == WIFI_FORGET) drawForget(c); else drawList(c);
         }
 
         private void drawMain(Canvas c, float seconds) {
@@ -379,8 +439,8 @@ public class SettingsActivity extends Activity {
             String mode = freeActive() ? "Free My TV" : Ui.tr("Original", "Original");
             String[] labels = {Ui.tr("Início", "Home Screen"), Ui.tr("Tela de Descanso", "Screensaver"),
                     Ui.tr("Ajustes do Início", "Home Settings"), Ui.tr("Prateleira", "Shelf"),
-                    Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings")};
-            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", ""};
+                    Ui.tr("Botões do Controle", "Remote Buttons"), Ui.tr("Ajustes da TV", "TV Settings"), Ui.tr("Wi-Fi", "Wi-Fi")};
+            String[] values = {working ? "" : mode, Ui.tr("Ver agora", "Preview"), "", "", "", "", HomeMode.XGIMI ? wifiSummary() : ""};
             for (int i = 0; i < rowCount(); i++) {
                 int row = mainRow(i);
                 float y = (LIST_TOP + i * (ROW_H + ROW_GAP)) * k;
@@ -394,6 +454,11 @@ public class SettingsActivity extends Activity {
                 if (row >= 2) {
                     float cw = Symbols.width(getContext(), "chevron_right", 22 * k);
                     Symbols.draw(getContext(), c, "chevron_right", right - cw / 2, rowRect.centerY(), 22 * k, blend(0x66FFFFFF, 0x991C1C1E, f));
+                    if (!values[row].isEmpty()) {
+                        rowValue.setColor(blend(0x8CFFFFFF, 0x8C1C1C1E, f));
+                        c.drawText(TextUtils.ellipsize(values[row], new TextPaint(rowValue), 420 * k, TextUtils.TruncateAt.END).toString(),
+                                right - cw - 18 * k, base, rowValue);
+                    }
                 } else if (i == 0 && working) {
                     // Switching: the current step in place of the value, with the spinning arc.
                     String text = busyText.isEmpty() ? Ui.tr("Começando…", "Starting…") : busyText;
@@ -616,8 +681,12 @@ public class SettingsActivity extends Activity {
                             } else if (screen == PICKER) {
                                 focus = pickFor - 1;
                                 screen = REMOTE_KEYS;
+                            } else if (screen == WIFI_FORGET) {
+                                screen = WIFI;
+                                keepWifiFocus(wifiPicked.ssid);
                             } else {
-                                focus = screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3 : screen == REMOTE_KEYS ? 4 : 0;
+                                focus = mainIndex(screen == HOME_SETTINGS ? 2 : screen == SHELF_EDIT ? 3 : screen == REMOTE_KEYS ? REMOTE_ROW
+                                        : screen == WIFI ? WIFI_ROW : 0);
                                 screen = MAIN;
                             }
                         }
@@ -807,11 +876,271 @@ public class SettingsActivity extends Activity {
         }
 
         private boolean scrolling() {
-            return screen == PICKER || screen == SHELF_EDIT;
+            return screen == PICKER || screen == SHELF_EDIT || screen == WIFI;
         }
 
         private int listSize() {
-            return screen == SHELF_EDIT ? shelfRows.size() : pickLabels.size();
+            return screen == SHELF_EDIT ? shelfRows.size() : screen == WIFI ? 1 + wifiCount() : pickLabels.size();
+        }
+
+        // MARK: - Wi-Fi (XGIMI projectors)
+
+        private int wifiCount() {
+            return wifi == null ? 0 : wifi.networks.size();
+        }
+
+        /** The network at list position `at` (0 is the Wi-Fi on/off row). */
+        private Wifi.Network wifiNet(int at) {
+            return wifi != null && at >= 1 && at <= wifi.networks.size() ? wifi.networks.get(at - 1) : null;
+        }
+
+        private String wifiOnOff() {
+            return wifi == null ? "…" : onOff(wifi.enabled);
+        }
+
+        /** The main row's value: the network in use. */
+        private String wifiSummary() {
+            if (wifi == null) return "";
+            if (!wifi.enabled) return onOff(false);
+            return wifi.connected.isEmpty() ? Ui.tr("Não conectado", "Not connected") : wifi.connected;
+        }
+
+        private static String netValue(Wifi.Network n) {
+            if (n.connected) return Ui.tr("Conectado", "Connected");
+            if (n.saved()) return Ui.tr("Salva", "Saved");
+            if (n.security.equals("open") || n.security.equals("owe")) return Ui.tr("Aberta", "Open");
+            return "";
+        }
+
+        private String[][] forgetRows() {
+            boolean inUse = wifiPicked != null && wifiPicked.connected;
+            return new String[][] {
+                {Ui.tr("Esquecer esta rede", "Forget this network"), inUse ? Ui.tr("O projetor se desconecta dela agora.",
+                        "The projector disconnects from it now.") : Ui.tr("Ela não entra mais sozinha.", "It won't join by itself anymore.")},
+                {Ui.tr("Cancelar", "Cancel"), Ui.tr("Manter salva", "Keep it saved")}};
+        }
+
+        private void openWifi() {
+            screen = WIFI;
+            focus = 0;
+            pickScroll = 0;
+            wifiLine = "";
+            handler.removeCallbacks(wifiScan);
+            handler.post(wifiScan);
+        }
+
+        /** Reads the Wi-Fi in the background; with `scan`, shows what's known at once, scans, and reads again. */
+        private void refreshWifi(boolean scan) {
+            Context c = getContext();
+            wifiWork.execute(() -> {
+                try {
+                    if (scan) {
+                        showWifi(Wifi.read(c));
+                        Wifi.scan(c);
+                        SystemClock.sleep(4000);
+                    }
+                    showWifi(Wifi.read(c));
+                } catch (IOException e) {
+                    AppLog.w("wifi: " + e.getMessage());
+                    handler.post(() -> {
+                        wifiLine = Ui.tr("Não deu para ler o Wi-Fi: ", "Couldn't read the Wi-Fi: ") + e.getMessage();
+                        invalidate();
+                    });
+                }
+            });
+        }
+
+        private void showWifi(Wifi.Status s) {
+            handler.post(() -> {
+                Wifi.Network was = screen == WIFI ? wifiNet(pickScroll + focus) : null;
+                wifi = s;
+                if (screen == WIFI) keepWifiFocus(was == null ? null : was.ssid);
+                invalidate();
+            });
+        }
+
+        /** After the list changes (the networks move with their signal), the focus stays on the same network. */
+        private void keepWifiFocus(String ssid) {
+            int total = 1 + wifiCount(), visible = Math.min(PICK_VISIBLE, total);
+            int at = Math.min(pickScroll + focus, total - 1);
+            for (int i = 0; ssid != null && i < wifiCount(); i++) if (wifi.networks.get(i).ssid.equals(ssid)) at = i + 1;
+            if (at < pickScroll) pickScroll = at;
+            else if (at >= pickScroll + visible) pickScroll = at - visible + 1;
+            pickScroll = Math.max(0, Math.min(pickScroll, total - visible));
+            focus = at - pickScroll;
+        }
+
+        /** OK on the list: Wi-Fi on or off, forget a saved network, or join a new one (asking for its password). */
+        private void activateWifi() {
+            if (wifiBusy) return;
+            int at = pickScroll + focus;
+            if (at == 0) {
+                if (wifi == null) return;
+                boolean on = !wifi.enabled;
+                Context c = getContext();
+                wifiBusy = true;
+                wifiWork.execute(() -> {
+                    try {
+                        Wifi.setEnabled(c, on);
+                    } catch (IOException e) {
+                        AppLog.w("wifi on/off: " + e.getMessage());
+                    }
+                    handler.post(() -> wifiBusy = false);
+                });
+                refreshWifi(true);
+                return;
+            }
+            Wifi.Network n = wifiNet(at);
+            if (n == null) return;
+            if (n.connected || n.saved()) {
+                wifiPicked = n;
+                screen = WIFI_FORGET;
+                focus = 1;   // Cancel: forgetting is never one press away
+            } else if (n.security.isEmpty()) {
+                wifiLine = Ui.tr("Esta rede pede um login que o Free My TV não faz: use os Ajustes da TV.",
+                        "This network needs a sign-in Free My TV can't do: use TV Settings.");
+            } else if (n.needsPassword()) {
+                askPassword(n);
+            } else {
+                joinWifi(n, "");
+            }
+        }
+
+        private void askPassword(Wifi.Network n) {
+            EditText field = new EditText(activity);
+            field.setSingleLine(true);
+            // A visible password: the TV's keyboard types plain letters, and the person sees what they typed.
+            field.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_VISIBLE_PASSWORD);
+            field.setHint(Ui.tr("Senha do Wi-Fi", "Wi-Fi password"));
+            field.setImeOptions(EditorInfo.IME_ACTION_DONE);
+            AlertDialog dialog = new AlertDialog.Builder(activity, android.R.style.Theme_DeviceDefault_Dialog_Alert)
+                    .setTitle(n.ssid)
+                    .setView(field)
+                    .setPositiveButton(Ui.tr("Conectar", "Connect"), (d, which) -> typedPassword(n, field.getText().toString()))
+                    .setNegativeButton(Ui.tr("Cancelar", "Cancel"), null)
+                    .create();
+            field.setOnEditorActionListener((v, action, event) -> {
+                dialog.dismiss();
+                typedPassword(n, field.getText().toString());
+                return true;
+            });
+            dialog.show();
+        }
+
+        private void typedPassword(Wifi.Network n, String password) {
+            if (!Wifi.validPassword(password)) {
+                wifiLine = Ui.tr("A senha tem de 8 a 63 letras, números ou símbolos.", "The password has 8 to 63 letters, numbers or symbols.");
+                invalidate();
+                return;
+            }
+            joinWifi(n, password);
+        }
+
+        private void joinWifi(Wifi.Network n, String password) {
+            Context c = getContext();
+            wifiBusy = true;
+            wifiLine = Ui.tr("Conectando a ", "Connecting to ") + n.ssid + "…";
+            invalidate();
+            wifiWork.execute(() -> {
+                String line;
+                try {
+                    line = Wifi.connect(c, n, password) ? Ui.tr("Conectado a ", "Connected to ") + n.ssid + "."
+                            : Ui.tr("Não deu para conectar a ", "Couldn't connect to ") + n.ssid
+                            + (n.needsPassword() ? Ui.tr(". Confira a senha.", ". Check the password.") : ".");
+                } catch (IOException e) {
+                    line = Ui.tr("Não deu para conectar a ", "Couldn't connect to ") + n.ssid + ": " + e.getMessage();
+                }
+                String result = line;
+                handler.post(() -> {
+                    wifiBusy = false;
+                    wifiLine = result;
+                    invalidate();
+                });
+                try {
+                    showWifi(Wifi.read(c));
+                } catch (IOException e) {
+                    AppLog.w("wifi: " + e.getMessage());
+                }
+            });
+        }
+
+        private void forgetWifi(Wifi.Network n) {
+            Context c = getContext();
+            wifiWork.execute(() -> {
+                try {
+                    Wifi.forget(c, n);
+                    handler.post(() -> {
+                        wifiLine = Ui.tr("Esqueci ", "Forgot ") + n.ssid + ".";
+                        invalidate();
+                    });
+                    showWifi(Wifi.read(c));
+                } catch (IOException e) {
+                    AppLog.w("wifi forget: " + e.getMessage());
+                }
+            });
+        }
+
+        /** Networks nearby, the one in use first: signal bars, a lock on the ones with a password. */
+        private void drawWifi(Canvas c) {
+            Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
+            c.drawText(Ui.tr("Wi-Fi", "Wi-Fi"), LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            int rows = rowCount();
+            Context ctx = getContext();
+            for (int i = 0; i < rows; i++) {
+                int at = pickScroll + i;
+                float y = (LIST_TOP + 20 + i * (LIST_ROW_H + LIST_ROW_GAP)) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + LIST_ROW_H * k);
+                float f = drawRowBackground(c, i);
+                int ink = blend(0xF2FFFFFF, INK, f);
+                rowLabel.setColor(ink);
+                rowValue.setColor(blend(0xB3FFFFFF, 0xB31C1C1E, f));
+                float base = rowRect.centerY() + Ui.halfCap(rowLabel), left = rowRect.left + 30 * k, right = rowRect.right - 30 * k;
+                Wifi.Network n = wifiNet(at);
+                if (n == null) {
+                    c.drawText(Ui.tr("Wi-Fi", "Wi-Fi"), left, base, rowLabel);
+                    c.drawText(wifiOnOff(), right, base, rowValue);
+                    continue;
+                }
+                float bw = Symbols.width(ctx, "wifi_4", 28 * k);
+                Symbols.draw(ctx, c, WIFI_BARS[n.bars()], right - bw / 2, rowRect.centerY(), 28 * k, ink);
+                right -= bw + 16 * k;
+                if (n.needsPassword()) {
+                    float lw = Symbols.width(ctx, "lock", 22 * k);
+                    Symbols.draw(ctx, c, "lock", right - lw / 2, rowRect.centerY(), 22 * k, blend(0x8CFFFFFF, 0x8C1C1C1E, f));
+                    right -= lw + 16 * k;
+                }
+                String value = netValue(n);
+                if (!value.isEmpty()) {
+                    c.drawText(value, right, base, rowValue);
+                    right -= rowValue.measureText(value) + 24 * k;
+                }
+                c.drawText(TextUtils.ellipsize(n.ssid, new TextPaint(rowLabel), right - left, TextUtils.TruncateAt.END).toString(), left, base, rowLabel);
+            }
+            Paint hint = Ui.text(Ui.regular, 23 * k, 0x8CFFFFFF);
+            float hy = (LIST_TOP + 20 + rows * (LIST_ROW_H + LIST_ROW_GAP) + 36) * k;
+            String line = !wifiLine.isEmpty() ? wifiLine : wifi == null ? Ui.tr("Procurando redes…", "Searching for networks…")
+                    : !wifi.enabled ? Ui.tr("O Wi-Fi está desligado.", "Wi-Fi is off.")
+                    : wifi.networks.isEmpty() ? Ui.tr("Procurando redes…", "Searching for networks…")
+                    : Ui.tr("OK conecta. As redes salvas entram sozinhas.", "OK connects. Saved networks join by themselves.");
+            c.drawText(TextUtils.ellipsize(line, new TextPaint(hint), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(),
+                    LIST_X * k + 30 * k, hy, hint);
+        }
+
+        /** A saved network: forget it, or keep it (the focus starts on keeping it). */
+        private void drawForget(Canvas c) {
+            Paint heading = Ui.text(Ui.displaySemibold, 34 * k, 0xFFFFFFFF);
+            c.drawText(TextUtils.ellipsize(wifiPicked.ssid, new TextPaint(heading), (LIST_R - LIST_X - 30) * k, TextUtils.TruncateAt.END).toString(),
+                    LIST_X * k + 30 * k, (LIST_TOP - 24) * k, heading);
+            String[][] rows = forgetRows();
+            for (int i = 0; i < rows.length; i++) {
+                float y = (LIST_TOP + 20 + i * (CHOICE_H + ROW_GAP)) * k;
+                rowRect.set(LIST_X * k, y, LIST_R * k, y + CHOICE_H * k);
+                float f = drawRowBackground(c, i);
+                rowLabel.setColor(blend(0xF2FFFFFF, INK, f));
+                rowSub.setColor(blend(0x8CFFFFFF, 0x991C1C1E, f));
+                c.drawText(rows[i][0], rowRect.left + 30 * k, rowRect.top + 44 * k, rowLabel);
+                c.drawText(rows[i][1], rowRect.left + 30 * k, rowRect.top + 80 * k, rowSub);
+            }
         }
 
         // MARK: - Shelf editor
@@ -974,6 +1303,20 @@ public class SettingsActivity extends Activity {
 
         private void activate() {
             Context c = getContext();
+            if (screen == WIFI) {
+                activateWifi();
+                invalidate();
+                spoken.focusMoved();
+                return;
+            }
+            if (screen == WIFI_FORGET) {
+                if (focus == 0) forgetWifi(wifiPicked);
+                screen = WIFI;
+                keepWifiFocus(wifiPicked.ssid);
+                invalidate();
+                spoken.focusMoved();
+                return;
+            }
             if (screen == HOME_CHOICE) {
                 boolean wantFree = focus == 0;
                 boolean already = wantFree ? freeActive() : HomeMode.ORIGINAL.equals(state.optString("mode", HomeMode.ORIGINAL));
@@ -1019,11 +1362,13 @@ public class SettingsActivity extends Activity {
                 focus = 0;
             } else if (mainRow(focus) == 3) {
                 openShelfEditor();
-            } else if (mainRow(focus) == 4) {
+            } else if (mainRow(focus) == REMOTE_ROW) {
                 HomeMode.ensureRemoteService(c, 0);   // the buttons work from inside other apps through this service
                 loadApps();
                 screen = REMOTE_KEYS;
                 focus = 0;
+            } else if (mainRow(focus) == WIFI_ROW) {
+                openWifi();
             } else {
                 HomeApps.openTvSettings(c);
             }
