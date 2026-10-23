@@ -176,4 +176,22 @@ class SceneTest {
         assertNull(Presets.place(full, "laptop:0", 1920, 1080))
         assertNull(Presets.place(Presets.welcome(), "app:x", 1920, 1080))
     }
+
+    @Test
+    fun aScreenTakesItsStreamsShape() {
+        val cinema = assertNotNull(Presets.layout(Presets.CINEMA, "laptop:0"))
+        // A mirrored 21:9 monitor: as wide as before, less tall.
+        val fitted = assertNotNull(Presets.fit(cinema, "laptop:0", 2576, 1080))
+        assertEquals(2576f / 1080f, fitted.screens[0].aspect, 1e-4f)
+        assertEquals(60f, fitted.screens[0].width)
+        // Already that shape, another laptop's stream, a size that makes no sense: nothing to do.
+        assertNull(Presets.fit(fitted, "laptop:0", 2576, 1080))
+        assertNull(Presets.fit(cinema, "laptop:1", 2576, 1080))
+        assertNull(Presets.fit(cinema, "laptop:0", 0, 1080))
+        assertNull(Presets.fit(Presets.layout(Presets.DESK)!!, "laptop:0", 1920, 1080))
+        // A wide stream's halves each take half its width.
+        val wide = assertNotNull(Presets.place(Presets.welcome(), "wide", 3840, 1080))
+        val tall = assertNotNull(Presets.fit(wide, "wide", 3840, 1600))
+        assertEquals(listOf(1.2f, 1.2f), tall.screens.map { it.aspect })
+    }
 }

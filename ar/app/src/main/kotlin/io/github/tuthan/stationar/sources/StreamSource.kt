@@ -10,11 +10,14 @@ import io.github.tuthan.stationar.core.stream.AnnexB
 import io.github.tuthan.stationar.core.stream.Handshake
 import io.github.tuthan.stationar.receiver.StreamServer
 import java.io.IOException
+import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledExecutorService
+import java.util.concurrent.TimeUnit
 
 /**
  * A laptop monitor: the laptop's HEVC (or AVC) stream, decoded by the Station's hardware decoder straight into this
  * screen's SurfaceTexture. The source outlives connections: a laptop that reconnects carries on in the same screen,
- * and the last picture stays up meanwhile.
+ * and the last picture stays up meanwhile; a stream gone for [ENDED_MS] shows the card, saying so.
  *
  * [play] runs on the connection's thread: it reads, cuts access units ([AnnexB]) and queues them; a second thread
  * hands decoded frames to the Surface as soon as they're out.
@@ -28,6 +31,12 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
 
     /** Access units dropped (waiting for a key frame, or too big), since the last log line. */
     @Volatile private var droppedUnits = 0
+
+    /** The last stream's picture size, 0 before one: a screen takes its shape. */
+    @Volatile var width = 0
+        private set
+    @Volatile var height = 0
+        private set
 
     override fun onSurface(surface: Surface) {
         synchronized(lock) {
@@ -102,6 +111,8 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
             c.start()
             decoding = surface
             label = laptop
+            width = hello.width
+            height = hello.height
             drain = Thread({ drain(c) }, "stationar-drain").apply { start() }
             conn.answer("OK")
             conn.timeout(StreamServer.STREAM_TIMEOUT_MS)
@@ -127,6 +138,8 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
                     current = null
                     playing = null
                     decoding = null
+                    // The laptop's own reconnects come within this: only a stream that stays gone shows the card.
+                    later.schedule({ synchronized(lock) { if (current == null) note = ENDED_NOTE } }, ENDED_MS, TimeUnit.MILLISECONDS)
                 }
             }
         }
@@ -192,6 +205,7 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
                 if (index >= 0) {
                     val now = System.nanoTime()
                     c.releaseOutputBuffer(index, true)
+                    if (note != null) note = null
                     if (frames < lag.size) lag[frames] = now / 1000 - info.presentationTimeUs
                     frames++
                     if (now - since >= 10_000_000_000L) {
@@ -214,6 +228,15 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
 
     companion object {
         private const val GONE_WAIT_MS = 500L
+
+        /** How long a stream stays gone before its screen shows the card: past the laptop's reconnects (0.5-3 s). */
+        private const val ENDED_MS = 4000L
+        private const val ENDED_NOTE = "Not streaming: run station-ar-send on the laptop"
+
+        /** Where a stream's end is looked at again. */
+        private val later: ScheduledExecutorService = Executors.newSingleThreadScheduledExecutor { r ->
+            Thread(r, "stationar-stream-end").apply { isDaemon = true }
+        }
 
         /** The decoder for this stream's format, or null when the Station has none (answer NO_DECODER). */
         fun decoderFor(hello: Handshake.Request.Hello): String? =

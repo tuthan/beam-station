@@ -6,6 +6,7 @@ import android.opengl.Matrix
 import android.os.Handler
 import android.os.HandlerThread
 import android.view.Surface
+import io.github.tuthan.stationar.AppLog
 import io.github.tuthan.stationar.render.Gl
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -57,6 +58,8 @@ abstract class SurfaceSource(name: String, private val width: Int, private val h
     private var surfaceTexture: SurfaceTexture? = null
     /** Frames queued and not yet taken: each [SurfaceTexture.updateTexImage] takes one. */
     private val pending = AtomicInteger()
+    /** The texture transform last logged. */
+    private val logged = FloatArray(16)
 
     /** The Surface to draw into, null before [attach] and after [detach]. */
     @Volatile var surface: Surface? = null
@@ -93,6 +96,11 @@ abstract class SurfaceSource(name: String, private val width: Int, private val h
         val st = surfaceTexture ?: return
         while (n-- > 0) st.updateTexImage()
         st.getTransformMatrix(texMatrix)
+        if (!texMatrix.contentEquals(logged)) {
+            // The producer's buffers set it (a decoder's crop, say): logged when it changes.
+            texMatrix.copyInto(logged)
+            AppLog.i("$name: texture transform " + texMatrix.joinToString(" ") { String.format(java.util.Locale.US, "%.4f", it) })
+        }
         live = true
     }
 

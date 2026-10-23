@@ -384,16 +384,20 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             }
             glView.queueEvent {
                 val now = renderer.currentLayout()
-                if (!shows(now, hello.source)) {
-                    val placed = Presets.place(now, hello.source, hello.width, hello.height)
-                    if (placed == null) {
+                // The screen that shows it takes its shape: a mirrored 21:9 monitor isn't squashed.
+                val next = if (shows(now, hello.source)) {
+                    Presets.fit(now, hello.source, hello.width, hello.height)
+                } else {
+                    Presets.place(now, hello.source, hello.width, hello.height) ?: run {
                         refusal.set("BUSY")
-                    } else {
-                        renderer.setLayout(placed) { name -> sourceFor(name) }
-                        main.post {
-                            layout = placed
-                            updateHud()
-                        }
+                        null
+                    }
+                }
+                if (next != null) {
+                    renderer.setLayout(next) { name -> sourceFor(name) }
+                    main.post {
+                        layout = next
+                        updateHud()
                     }
                 }
                 done.countDown()
@@ -799,7 +803,10 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         }
     }
 
-    private fun setLayout(l: Layout) {
+    private fun setLayout(chosen: Layout) {
+        // A preset's laptop screens are 16:9: those showing a stream take its shape.
+        var l = chosen
+        for ((name, s) in streams) Presets.fit(l, name, s.width, s.height)?.let { l = it }
         layout = l
         glView.queueEvent { renderer.setLayout(l) { name -> sourceFor(name) } }
         AppLog.i("AR: layout ${l.encode()}")

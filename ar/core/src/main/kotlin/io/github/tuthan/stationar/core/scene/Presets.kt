@@ -96,6 +96,26 @@ object Presets {
         return if (out.screens.size > Layout.MAX_SCREENS) null else out
     }
 
+    /**
+     * The layout with the screens that show a laptop stream shaped like its picture (`width` x `height`; each half of a
+     * `wide` stream half as wide), each keeping its width: a 21:9 monitor isn't squashed into a 16:9 screen. Null when
+     * they have that shape already.
+     */
+    fun fit(layout: Layout, source: String, width: Int, height: Int): Layout? {
+        if (width <= 0 || height <= 0) return null
+        val aspect = if (source == "wide") (width / 2f) / height else width.toFloat() / height
+        val out = layout.copy()
+        var changed = false
+        for (s in out.screens) {
+            val shows = if (source == "wide") s.kind == "wide" else s.source == source
+            if (shows && abs(s.aspect - aspect) > 1e-3f) {
+                s.aspect = aspect
+                changed = true
+            }
+        }
+        return if (changed) out else null
+    }
+
     /** An app screen's width: 1280x720 at about 1.5 glasses pixels per app pixel. */
     const val APP_WIDTH = 36f
 
