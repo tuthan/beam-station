@@ -97,15 +97,21 @@ sealed class Command {
     }
 }
 
-/** A root task (Android 11's "stack") as TASKS reports it: its id, its display, the package of its top task. */
-data class TaskInfo(val id: Int, val display: Int, val pkg: String, val visible: Boolean) {
-    fun encode() = "$id $display $pkg $visible"
+/**
+ * A root task (Android 11's "stack") as TASKS reports it: its id, its display, the package of its top task, and that
+ * task's top activity (`pkg/class`, or "" when `am` didn't say).
+ */
+data class TaskInfo(val id: Int, val display: Int, val pkg: String, val visible: Boolean, val top: String = "") {
+    fun encode() = "$id $display $pkg $visible ${top.ifEmpty { "-" }}"
 
     companion object {
         fun decode(line: String): TaskInfo? {
             val p = line.split(' ')
-            if (p.size != 4) return null
-            return TaskInfo(p[0].toIntOrNull() ?: return null, p[1].toIntOrNull() ?: return null, p[2], p[3] == "true")
+            if (p.size != 5) return null
+            return TaskInfo(
+                p[0].toIntOrNull() ?: return null, p[1].toIntOrNull() ?: return null, p[2], p[3] == "true",
+                if (p[4] == "-") "" else p[4],
+            )
         }
 
         fun decodeAll(text: String): List<TaskInfo> = text.lines().mapNotNull { if (it.isBlank()) null else decode(it) }
@@ -132,7 +138,8 @@ data class TaskInfo(val id: Int, val display: Int, val pkg: String, val visible:
                 if (reported) continue
                 val m = Regex("^taskId=(\\d+): ([^/ ]+)/").find(line) ?: continue
                 val visible = Regex("visible=(true|false)").find(line)?.groupValues?.get(1) == "true"
-                out.add(TaskInfo(root, display, m.groupValues[2], visible))
+                val top = Regex("topActivity=ComponentInfo\\{([^}\\s]+)\\}").find(line)?.groupValues?.get(1) ?: ""
+                out.add(TaskInfo(root, display, m.groupValues[2], visible, top))
                 reported = true
             }
             return out

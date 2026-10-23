@@ -119,6 +119,91 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         return launchComponent(pkg) != null
     }
 
+    // MARK: - Watching full screen
+
+    /** An app moved onto the glasses' display to play full screen: its task, its screen, its top activity then. */
+    private class Watch(val source: VirtualDisplaySource, val task: Int, val top: String)
+
+    @Volatile private var watch: Watch? = null
+
+    /** An app is on the glasses' display, full screen, and AR waits behind it. */
+    val watching: Boolean get() = watch != null
+
+    /**
+     * Puts the top task of screen `name` on the glasses' display, full screen (worker; `done(ok)` on the main thread):
+     * a film there goes straight to the display, where in a screen its every frame costs a GPU pass. AR stops behind
+     * it; [followWatch] brings it back.
+     */
+    fun watchFullScreen(name: String, done: (Boolean) -> Unit) {
+        val queued = background {
+            val src = sources[name]
+            var ok = false
+            if (!closed.get() && helper.running && src != null && src.displayId >= 0) {
+                val top = TaskInfo.decodeAll(helper.call(Command.Tasks) ?: "").firstOrNull { it.display == src.displayId }
+                if (top != null) {
+                    // Set first: the move stops AR, and AR asks whether it's watching.
+                    watch = Watch(src, top.id, top.top)
+                    ok = helper.call(Command.MoveTask(top.id, 0)) != null
+                    if (ok) AppLog.i("${src.name}: task ${top.id} full screen (${top.top})") else watch = null
+                }
+            }
+            main.post { done(ok) }
+        }
+        if (!queued) done(false)
+    }
+
+    /**
+     * AR stopped behind an app watched full screen: the helper looks at the glasses' display every [WATCH_POLL_MS].
+     * The home screen on top: `leave` (Home ends AR, as always). The watched activity gone or changed (the film ended,
+     * Back left the player): its task goes back into its screen, AR comes to the front, then `back`.
+     */
+    fun followWatch(back: () -> Unit, leave: () -> Unit) {
+        main.postDelayed({ background { checkWatch(back, leave) } }, WATCH_POLL_MS)
+    }
+
+    private fun checkWatch(back: () -> Unit, leave: () -> Unit) {
+        val w = watch ?: return
+        if (closed.get() || !helper.running) {
+            watch = null
+            main.post(leave)
+            return
+        }
+        val tasks = TaskInfo.decodeAll(helper.call(Command.Tasks) ?: "")
+        val t = tasks.firstOrNull { it.id == w.task }
+        val top = tasks.firstOrNull { it.display == 0 && it.visible }
+        when {
+            top != null && top.pkg == homePackage -> {
+                watch = null
+                AppLog.i("${w.source.name}: the home screen took the glasses")
+                main.post(leave)
+            }
+            t != null && t.display == 0 && t.top == w.top -> followWatch(back, leave)
+            else -> {
+                watch = null
+                if (t != null && t.display == 0 && w.source.displayId >= 0) helper.call(Command.MoveTask(t.id, w.source.displayId))
+                helper.call(Command.Front)
+                focusedDisplay = -1
+                focusNow()
+                AppLog.i("${w.source.name}: back in its screen")
+                main.post(back)
+            }
+        }
+    }
+
+    /** AR came to the front while an app was full screen: the app goes back into its screen (worker). */
+    fun endWatch() {
+        if (watch == null) return
+        background {
+            val w = watch ?: return@background
+            watch = null
+            val t = TaskInfo.decodeAll(helper.call(Command.Tasks) ?: "").firstOrNull { it.id == w.task }
+            if (t != null && t.display == 0 && w.source.displayId >= 0) helper.call(Command.MoveTask(t.id, w.source.displayId))
+            focusedDisplay = -1
+            focusNow()
+            AppLog.i("${w.source.name}: back in its screen")
+        }
+    }
+
     private val homePackage: String? by lazy {
         context.packageManager.resolveActivity(
             Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY,
@@ -318,6 +403,8 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     companion object {
         private const val FOCUS_TRIES = 6
         private const val FOCUS_RETRY_MS = 300L
+        /** How often to look at the glasses' display while an app is full screen (each look runs `am stack list`). */
+        private const val WATCH_POLL_MS = 2000L
 
         /** Apps a TV launcher lists: (package, label), without Station AR and Station Home. */
         fun launchable(c: Context): List<Pair<String, String>> {

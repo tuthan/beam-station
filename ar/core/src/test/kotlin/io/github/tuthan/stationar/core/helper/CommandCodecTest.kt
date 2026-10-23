@@ -67,12 +67,17 @@ class CommandCodecTest {
         val tasks = TaskInfo.parseStackList(text)
         assertEquals(
             listOf(
-                TaskInfo(1, 0, "io.github.tuthan.beamstation", true),
-                TaskInfo(40, 0, "io.github.tuthan.stationar", true),
-                TaskInfo(41, 2, "org.videolan.vlc", false),
+                TaskInfo(1, 0, "io.github.tuthan.beamstation", true,
+                    "io.github.tuthan.beamstation/io.github.tuthan.beamstation.HomeActivity"),
+                TaskInfo(40, 0, "io.github.tuthan.stationar", true,
+                    "io.github.tuthan.stationar/io.github.tuthan.stationar.ArActivity"),
+                TaskInfo(41, 2, "org.videolan.vlc", false, "org.videolan.vlc/org.videolan.vlc.gui.MainActivity"),
             ),
             tasks,
         )
         assertEquals(tasks, TaskInfo.decodeAll(tasks.joinToString("\n") { it.encode() }))
+        // No top activity reported: it travels as "-".
+        val bare = TaskInfo(7, 0, "com.example", true)
+        assertEquals(bare, TaskInfo.decode(bare.encode()))
     }
 }

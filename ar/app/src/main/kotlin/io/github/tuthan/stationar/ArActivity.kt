@@ -153,6 +153,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         super.onResume()
         resumed = true
         main.removeCallbacks(comeBackOrLeave)
+        apps.endWatch()
         sensors.start()
         glView.onResume()
         val want60 = settings.refresh60
@@ -176,6 +177,11 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         // app's screen, and AR comes back; or another app opening there (an AirPlay player): AR comes back and asks.
         if (apps.count == 0) {
             leave()
+            return
+        }
+        // An app you chose to watch full screen: AR waits behind it, and comes back when it's done.
+        if (apps.watching) {
+            apps.followWatch(back = { if (!resumed) main.postDelayed(comeBackOrLeave, RECLAIM_WAIT_MS) }, leave = { leave() })
             return
         }
         apps.reclaim { moved, other ->
@@ -476,12 +482,15 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         val spec = layout.screens.getOrNull(i) ?: return
         menuScreen = i
         panelHeader = StationAr.screenLabel(spec.source)
-        panel.set(listOf("" to listOf(
+        val items = arrayListOf(
             PanelLayout.Item("screen-left", "Move left"),
             PanelLayout.Item("screen-right", "Move right"),
             PanelLayout.Item("screen-close", "Close"),
             PanelLayout.Item("screen-done", "Done"),
-        )))
+        )
+        // A film in a screen costs the GPU a pass per frame; full screen it costs nothing, without head tracking.
+        if (spec.kind == "app") items.add(0, PanelLayout.Item("screen-full", "Watch full screen", "Back returns"))
+        panel.set(listOf("" to items))
         showPanelNow()
     }
 
@@ -603,6 +612,13 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 closePanel()
             }
             id == "screen-done" -> closePanel()
+            id == "screen-full" -> {
+                val source = layout.screens.getOrNull(menuScreen)?.source ?: return closePanel()
+                closePanel()
+                apps.watchFullScreen(source) { ok ->
+                    if (!ok) onAppStatus("${StationAr.screenLabel(source)} couldn't go full screen")
+                }
+            }
             id == "offer-screen" -> {
                 val t = offered ?: return closePanel()
                 offered = null
