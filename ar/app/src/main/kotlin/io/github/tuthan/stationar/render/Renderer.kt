@@ -100,6 +100,8 @@ class Renderer(
     // Frame statistics, logged every 10 s.
     private val intervals = LongArray(600)
     private val draws = LongArray(600)
+    /** Of each draw, the time taken by the screens' new frames (`Source.update`: it can wait for the producer). */
+    private val updates = LongArray(600)
     private var stats = 0
     private var lastFrameAt = 0L
     private var statsSince = 0L
@@ -156,6 +158,7 @@ class Renderer(
 
         GLES20.glClearColor(0f, 0f, 0f, 1f)
         GLES20.glClear(GLES20.GL_COLOR_BUFFER_BIT)
+        var updating = 0L
         for (i in 0 until slots.size) {
             val slot = slots[i]
             Mat4.multiply(mvp, viewProjection, slot.model)
@@ -164,7 +167,9 @@ class Renderer(
             }
             val source = slot.source
             if (source != null && source.stamp != frameNumber) {
+                val t = SystemClock.elapsedRealtimeNanos()
                 source.update()
+                updating += SystemClock.elapsedRealtimeNanos() - t
                 source.stamp = frameNumber
             }
             if (source != null && source.live) {
@@ -184,7 +189,7 @@ class Renderer(
             Mat4.multiply(mvp, projection, hudModel)
             p.bitmap.draw(hudMesh.vertices, hudMesh.count, mvp, hud.texture, Gl.FLIP_V, 0f, 0f, 1f, 1f, 0.95f)
         }
-        frameStats(start)
+        frameStats(start, updating)
     }
 
     private fun updatePose(now: Long) {
@@ -215,11 +220,12 @@ class Renderer(
         }
     }
 
-    private fun frameStats(start: Long) {
+    private fun frameStats(start: Long, updating: Long) {
         val end = SystemClock.elapsedRealtimeNanos()
         if (lastFrameAt != 0L && stats < intervals.size) {
             intervals[stats] = start - lastFrameAt
             draws[stats] = end - start
+            updates[stats] = updating
             stats++
         }
         lastFrameAt = start
@@ -228,9 +234,11 @@ class Renderer(
             if (stats > 10) {
                 java.util.Arrays.sort(intervals, 0, stats)
                 java.util.Arrays.sort(draws, 0, stats)
+                java.util.Arrays.sort(updates, 0, stats)
                 val fps = stats * 1e9 / (start - statsSince)
-                AppLog.i(String.format(java.util.Locale.US, "frames: %.1f fps, interval p50 %.1f p95 %.1f ms, draw p50 %.1f p95 %.1f ms, %d screens, tracking %b",
-                    fps, intervals[stats / 2] / 1e6, intervals[stats * 95 / 100] / 1e6, draws[stats / 2] / 1e6, draws[stats * 95 / 100] / 1e6, slots.size, tracking))
+                AppLog.i(String.format(java.util.Locale.US, "frames: %.1f fps, interval p50 %.1f p95 %.1f ms, draw p50 %.1f p95 %.1f ms (new frames p50 %.1f p95 %.1f), %d screens, tracking %b",
+                    fps, intervals[stats / 2] / 1e6, intervals[stats * 95 / 100] / 1e6, draws[stats / 2] / 1e6, draws[stats * 95 / 100] / 1e6,
+                    updates[stats / 2] / 1e6, updates[stats * 95 / 100] / 1e6, slots.size, tracking))
             }
             stats = 0
             statsSince = start
