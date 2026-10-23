@@ -179,11 +179,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             leave()
             return
         }
-        // An app you chose to watch full screen: AR waits behind it, and comes back when it's done.
-        if (apps.watching) {
-            apps.followWatch(back = { if (!resumed) main.postDelayed(comeBackOrLeave, RECLAIM_WAIT_MS) }, leave = { leave() })
-            return
-        }
+        // An app you chose to watch full screen: AR waits behind it; the watch's own poll brings it back or ends it.
+        if (apps.watching) return
         apps.reclaim { moved, other ->
             if (!moved && other == null) {
                 leave()
@@ -203,6 +200,24 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             PanelLayout.Item("offer-full", "Full screen", "leaves AR"),
         )))
         showPanelNow()
+    }
+
+    /**
+     * An app went full screen over AR. Android 11 can leave AR resumed behind a task moved onto its display (only
+     * "top resumed" moves), so AR stops drawing and tracking itself until [wake] or its next onResume.
+     */
+    private fun rest() {
+        main.removeCallbacks(tick)
+        sensors.stop()
+        glView.onPause()
+    }
+
+    /** The watched app went back into its screen while AR stayed resumed: AR draws and tracks again. */
+    private fun wake() {
+        main.removeCallbacks(tick)
+        sensors.start()
+        glView.onResume()
+        tick.run()
     }
 
     /** After a reclaim: AR should be on top again by now; if it isn't (Home was pressed meanwhile), AR ends. */
@@ -616,7 +631,12 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 val source = layout.screens.getOrNull(menuScreen)?.source ?: return closePanel()
                 closePanel()
                 apps.watchFullScreen(source) { ok ->
-                    if (!ok) onAppStatus("${StationAr.screenLabel(source)} couldn't go full screen")
+                    if (!ok) {
+                        onAppStatus("${StationAr.screenLabel(source)} couldn't go full screen")
+                        return@watchFullScreen
+                    }
+                    rest()
+                    apps.followWatch(back = { if (resumed) wake() else main.postDelayed(comeBackOrLeave, RECLAIM_WAIT_MS) }, leave = { leave() })
                 }
             }
             id == "offer-screen" -> {

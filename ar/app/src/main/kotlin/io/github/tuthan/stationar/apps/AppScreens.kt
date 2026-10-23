@@ -131,7 +131,7 @@ class AppScreens(private val context: Context, private val listener: Listener) :
 
     /**
      * Puts the top task of screen `name` on the glasses' display, full screen (worker; `done(ok)` on the main thread):
-     * a film there goes straight to the display, where in a screen its every frame costs a GPU pass. AR stops behind
+     * a film there goes straight to the display, where in a screen its every frame costs a GPU pass. AR rests behind
      * it; [followWatch] brings it back.
      */
     fun watchFullScreen(name: String, done: (Boolean) -> Unit) {
@@ -153,7 +153,7 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     }
 
     /**
-     * AR stopped behind an app watched full screen: the helper looks at the glasses' display every [WATCH_POLL_MS].
+     * AR rests behind an app watched full screen: the helper looks at the glasses' display every [WATCH_POLL_MS].
      * The home screen on top: `leave` (Home ends AR, as always). The watched activity gone or changed (the film ended,
      * Back left the player): its task goes back into its screen, AR comes to the front, then `back`.
      */
