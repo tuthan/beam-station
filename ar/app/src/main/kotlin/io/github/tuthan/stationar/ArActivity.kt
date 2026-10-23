@@ -1,6 +1,8 @@
 package io.github.tuthan.stationar
 
 import android.app.Activity
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.hardware.SensorManager
@@ -113,6 +115,19 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         AppLog.i("AR: open, layout ${layout.encode()}")
         intent?.getStringExtra(EXTRA_PACKAGE)?.let { pkg -> main.post { openApp(pkg) } }
         work.execute { startReceiver() }
+        registerReceiver(homeKey, IntentFilter(Intent.ACTION_CLOSE_SYSTEM_DIALOGS))
+    }
+
+    /**
+     * Home ends AR, wherever it went. With an app's display focused, Android looks for a home screen on that display,
+     * finds none and only says so (CLOSE_SYSTEM_DIALOGS, reason "homekey"); the key itself never reaches AR.
+     */
+    private val homeKey = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (intent.getStringExtra(SYSTEM_DIALOG_REASON) != HOME_KEY) return
+            AppLog.i("AR: Home pressed")
+            leave()
+        }
     }
 
     /**
@@ -225,6 +240,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterReceiver(homeKey)
         leave()
         // If the GL thread ended before it released the scene, the apps' tasks and displays still go.
         apps.close()
@@ -795,5 +811,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         private const val TURN_STEP = 5f
         private const val NUDGE_STEP = 5f
         private const val RECLAIM_WAIT_MS = 2000L
+        // The framework's (hidden) extra on CLOSE_SYSTEM_DIALOGS, and its value for Home.
+        private const val SYSTEM_DIALOG_REASON = "reason"
+        private const val HOME_KEY = "homekey"
     }
 }
