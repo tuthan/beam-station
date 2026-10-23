@@ -11,9 +11,12 @@ object AppCompat {
 
     private val KNOWN = mapOf(
         "org.videolan.vlc" to Entry(Status.WORKS, "Plays HEVC in a screen (52-59 fps in test 1)"),
-        "com.liskovsoft.smarttubetv" to Entry(Status.PARTLY, "Video showed, then stopped to buffer after the move"),
-        "com.liskovsoft.smarttubetv.beta" to Entry(Status.PARTLY, "Video showed, then stopped to buffer after the move"),
-        "com.teamsmart.videomanager.tv" to Entry(Status.PARTLY, "Video showed, then stopped to buffer after the move"),
+        // Seen 2026-10-23: its player opens on the glasses' display and is moved into the screen; with SurfaceView (its
+        // default) the video is black after that move, with TextureView it plays.
+        "org.smarttube.stable" to Entry(Status.WORKS, SMARTTUBE),
+        "com.liskovsoft.smarttubetv" to Entry(Status.WORKS, SMARTTUBE),
+        "com.liskovsoft.smarttubetv.beta" to Entry(Status.WORKS, SMARTTUBE),
+        "com.teamsmart.videomanager.tv" to Entry(Status.WORKS, SMARTTUBE),
         "com.google.android.youtube.tv" to Entry(Status.NO_VIDEO, "Video is solid green in a screen: play it full-screen"),
         // Seen 2026-10-23: it opens YouTube at a youtube.com link and closes; YouTube lands on the glasses' display.
         "com.google.android.youtube.tvmusic" to Entry(Status.NO_VIDEO, "Opens YouTube, which plays full-screen only"),
@@ -23,8 +26,12 @@ object AppCompat {
         "com.wbd.stream" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
         "com.hbo.hbonow" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
         "com.apple.atve.androidtv.appletv" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
-        "org.jellyfin.androidtv" to Entry(Status.UNTESTED, "Menus and search work in a screen; video not tried yet"),
+        // Seen 2026-10-23: a 10-bit HEVC film in a screen took AR down to 1-3 fps (the GPU converts every frame).
+        "org.jellyfin.androidtv" to Entry(Status.PARTLY, "Plays in a screen; a 10-bit (HDR) film is too heavy there: Watch full screen"),
     )
+
+    private const val SMARTTUBE = "Plays in a screen with Settings > Player > Developer options > " +
+        "\"Ambilight/Aspect ratio/Video scale/Screenshots fix\" on (TextureView); without it the video is black"
 
     private val UNKNOWN = Entry(Status.UNTESTED, "Not tried in a screen yet")
 

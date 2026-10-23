@@ -97,8 +97,10 @@ class AppScreens(private val context: Context, private val listener: Listener) :
                     if (t.display != 0) continue
                     if (helper.call(Command.MoveTask(t.id, src.displayId)) == null) continue
                     AppLog.i("${src.name}: its task ${t.id} opened on the glasses' display; moved into its screen")
-                    // Its app had closed there: this is its app now.
-                    if (src.appClosed) opened(src, t.id)
+                    // This is its app now if it had none there: it closed, or it never started there (a splash that
+                    // hands off to a task of its own at once, as SmartTube's does, looks like a launch that failed), or
+                    // the task it started as is gone. Without one, the remote would stay with AR.
+                    if (src.appClosed || src.task < 0 || tasks.none { it.id == src.task }) opened(src, t.id)
                     filled.add(src)
                     moved = true
                 }
@@ -325,6 +327,8 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         src.task = task
         src.appClosed = false
         src.note = null
+        // A launch that looked failed said so on the HUD.
+        status(null)
         if (wanted == src.name) focusNow()
     }
 
@@ -339,8 +343,12 @@ class AppScreens(private val context: Context, private val listener: Listener) :
             return
         }
         val queued = background {
-            val t = source.task
-            if (t >= 0 && helper.running) helper.call(Command.RemoveTask(t))
+            if (helper.running) {
+                // Every task of its app there, not only the one it started as: an app can have several (SmartTube's
+                // browser and player), and one left over is brought back to display 0 the next time the app opens.
+                val there = TaskInfo.decodeAll(helper.call(Command.Tasks) ?: "").filter { it.display == displayId }.map { it.id }
+                for (t in (there + source.task).filter { it >= 0 }.distinct()) helper.call(Command.RemoveTask(t))
+            }
             source.release()
             if (focusedDisplay == displayId) focusedDisplay = -1
             focusNow()

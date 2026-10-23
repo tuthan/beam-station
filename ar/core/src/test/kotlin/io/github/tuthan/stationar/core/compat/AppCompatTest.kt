@@ -15,7 +15,7 @@ class AppCompatTest {
     fun test1sResults() {
         assertEquals(AppCompat.Status.WORKS, AppCompat.of("org.videolan.vlc").status)
         assertEquals(AppCompat.Status.NO_VIDEO, AppCompat.of("com.google.android.youtube.tv").status)
-        assertEquals(AppCompat.Status.PARTLY, AppCompat.of("com.liskovsoft.smarttubetv.beta").status)
+        assertEquals(AppCompat.Status.WORKS, AppCompat.of("com.liskovsoft.smarttubetv.beta").status)
         assertEquals(AppCompat.Status.DRM, AppCompat.of("com.netflix.ninja").status)
         assertEquals(AppCompat.Status.UNTESTED, AppCompat.of("com.example.whatever").status)
         // YouTube Music hands off to YouTube.
