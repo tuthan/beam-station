@@ -16,11 +16,22 @@ import java.io.OutputStream
  *
  *   STATIONAR 1 HELLO <token> <screen> <w> <h> <fps> <codec>  ->
  *                                               <-   OK | DENIED | BUSY | NO_DECODER | CLOSED | VERSION 1
- *   then the Annex-B video, laptop to Station, until either side closes.
+ *   then the Annex-B video, laptop to Station, until either side closes; and now and then a line the other way:
+ *                                               <-   MORE               (add a laptop screen)
+ *                                               <-   GONE               (this screen was closed in AR)
  */
 object Handshake {
     const val VERSION = 1
     const val MAX_LINE = 256
+
+    /** Laptop monitors at once, screens 0 to 2 (the Station decodes two 1080p60 streams at ~150 fps each). */
+    const val MAX_LAPTOP_SCREENS = 3
+
+    /** After OK, on any of a laptop's streams: make another monitor and stream it as the next free screen. */
+    const val MORE = "MORE"
+
+    /** After OK: you closed this screen in AR. The laptop removes the monitor (screen 0 waits instead). */
+    const val GONE = "GONE"
 
     sealed class Request {
         data class Pair(val name: String) : Request()
@@ -46,7 +57,7 @@ object Handshake {
     private val NAME = Regex("[A-Za-z0-9 ._-]{1,40}")
     private val TOKEN = Regex("[0-9a-f]{64}")
     private val PIN = Regex("[0-9]{6}")
-    private val SCREEN = Regex("[01]|wide")
+    private val SCREEN = Regex("[0-${MAX_LAPTOP_SCREENS - 1}]|wide")
 
     /** The first line, parsed; null when it isn't one of ours (close the connection). */
     fun parseRequest(line: String): Request? {

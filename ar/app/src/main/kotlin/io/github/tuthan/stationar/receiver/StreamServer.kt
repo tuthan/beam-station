@@ -30,6 +30,8 @@ class StreamServer(private val port: Int, private val pairing: Pairing, private 
 
     /** One laptop connection, as the code that plays its stream sees it. */
     class Connection(private val socket: SSLSocket, val input: BufferedInputStream) {
+        /** A line to the laptop: the answer to its HELLO, or later [Handshake.MORE] and [Handshake.GONE] (any thread). */
+        @Synchronized
         @Throws(IOException::class)
         fun answer(line: String) = Handshake.writeLine(socket.outputStream, line)
 
@@ -190,7 +192,7 @@ class StreamServer(private val port: Int, private val pairing: Pairing, private 
         /** Connections at once that haven't sent their first line; more are closed on arrival. */
         const val MAX_UNSORTED = 4
         const val PIN_TIMEOUT_MS = 120_000
-        /** No bytes for this long ends a stream (the sender keeps a constant frame rate). */
+        /** No bytes for this long ends a stream (the sender sends a keepalive after 1 s without a frame). */
         const val STREAM_TIMEOUT_MS = 5_000
     }
 }

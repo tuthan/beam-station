@@ -43,7 +43,7 @@ token. The laptop keeps the fingerprint, address, port, token and name in `~/.co
 
 ```
 laptop:  STATIONAR 1 HELLO <token> <screen> <width> <height> <fps> <codec>
-           screen: 0 | 1 | wide      width 64-4096, height 64-2160, fps 1-120, codec: hevc | avc
+           screen: 0 | 1 | 2 | wide  width 64-4096, height 64-2160, fps 1-120, codec: hevc | avc
 Station: OK                          then the video, until either side closes
      or  DENIED                      unknown token: pair again
      or  NO_DECODER                  the Station can't decode this size and codec (wide AVC, for one)
@@ -54,18 +54,37 @@ Station: OK                          then the video, until either side closes
 
 - A `HELLO` for a screen that already streams **replaces** that connection: a laptop that lost the network and
   reconnects takes over at once.
-- If no screen shows the stream, Station AR adds one where the Desk layout puts it (`Presets.place`), at 1:1 for
-  the stream's size; `wide` is two screens, the stream's left and right halves. A stream whose screen you put away
-  (by choosing a layout without it) is answered `CLOSED` until a layout shows it again.
+- If no screen shows the stream, Station AR adds one (`Presets.place`), at 1:1 for the stream's size: straight ahead
+  when no laptop screen is up, else beside them; `wide` is two screens, the stream's left and right halves. A stream
+  whose screen you put away (by choosing a layout without it, or closing it) is answered `CLOSED` until a layout
+  shows it again.
+
+### While a stream plays
+
+The Station may send a line on a stream's connection after `OK` (the laptop reads them between frames, and ignores
+any it doesn't know):
+
+```
+Station: MORE     "+ Laptop screen" in AR: make another monitor and stream it as the next free screen (0-2);
+                  nothing with --wide, or with three up already
+Station: GONE     you closed this screen in AR, or chose a layout without it: screens 1 and 2 end for good and
+                  the laptop removes their monitors (Hyprland moves their windows to the others); screen 0 and a
+                  wide stream ask again every 2 s, answered CLOSED until a layout shows them
+```
+
+`MORE` goes on the lowest-numbered laptop stream, `GONE` on the stream it's about, before its screen goes (taking
+the screen away ends the connection).
 
 ## The video
 
 - **Annex-B** H.265 (or H.264), no container, no audio.
-- An **access-unit delimiter** before every picture (`-bsf:v hevc_metadata=aud=insert`): the Station cuts the byte
-  stream at them (`AnnexB`) and hands each picture to the decoder as one buffer.
-- **No B-frames**; a key frame (with VPS/SPS/PPS in band) at least every 2 s. The sender restarts its encoder on every
+- An **access-unit delimiter** before every picture, sent right after the picture before it: the Station cuts the
+  byte stream at them (`AnnexB`) and hands each picture to the decoder as one buffer, as soon as the next delimiter
+  arrives.
+- **No B-frames**; a key frame (with VPS/SPS/PPS in band) every 1800 frames. The sender restarts its encoder on every
   connection, so the first picture is a key frame; the Station drops pictures until it sees parameter sets.
-- **A constant frame rate.** Five seconds without a byte ends the stream on the Station.
+- **Pictures only when the screen changes** (a desktop that doesn't change has none). After 1 s without one the
+  sender sends a user-data SEI, which the decoder ignores; five seconds without a byte ends the stream on the Station.
 - The Station queues pictures with their arrival time and renders each decoded frame at once (`KEY_LOW_LATENCY` when
   the decoder has the feature; the Amlogic HEVC decoder does).
 

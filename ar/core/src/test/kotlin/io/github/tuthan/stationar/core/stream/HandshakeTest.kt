@@ -19,6 +19,8 @@ class HandshakeTest {
         val hello = Handshake.parseRequest(Handshake.hello(token, "1", 1920, 1080, 60, "hevc"))
         assertEquals(Handshake.Request.Hello(token, "1", 1920, 1080, 60, AnnexB.Codec.HEVC), hello)
         assertEquals("laptop:1", (hello as Handshake.Request.Hello).source)
+        val third = Handshake.parseRequest(Handshake.hello(token, "2", 1920, 1080, 60, "hevc")) as Handshake.Request.Hello
+        assertEquals("laptop:2", third.source)
         val wide = Handshake.parseRequest(Handshake.hello(token, "wide", 3840, 1080, 60, "avc")) as Handshake.Request.Hello
         assertEquals("wide", wide.source)
         assertEquals(AnnexB.Codec.AVC, wide.codec)
@@ -37,7 +39,7 @@ class HandshakeTest {
             "", "GET / HTTP/1.1", "STATIONAR 1", "STATIONAR 1 PAIR ", "STATIONAR 1 PAIR " + "x".repeat(41),
             "STATIONAR 1 PAIR bad\u0001name", "STATIONAR 1 HELLO short 0 1920 1080 60 hevc",
             "STATIONAR 1 HELLO ${token.uppercase()} 0 1920 1080 60 hevc",
-            "STATIONAR 1 HELLO $token 2 1920 1080 60 hevc",
+            "STATIONAR 1 HELLO $token 3 1920 1080 60 hevc",
             "STATIONAR 1 HELLO $token 0 1920 1080 60 vp9",
             "STATIONAR 1 HELLO $token 0 99999 1080 60 hevc",
             "STATIONAR 1 HELLO $token 0 1920 1080 0 hevc",

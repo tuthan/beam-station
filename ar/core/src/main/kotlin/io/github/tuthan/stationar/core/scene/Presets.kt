@@ -27,7 +27,7 @@ object Presets {
     /** What a preset's tile says under its name; the laptop ones say so when the laptop isn't streaming. */
     fun detail(name: String, laptop: Boolean) = when (name) {
         CINEMA -> "one big screen"
-        DESK -> if (laptop) "2 laptop screens" else "needs the laptop"
+        DESK -> if (laptop) "1 laptop screen" else "needs the laptop"
         DESK_APP -> if (laptop) "laptop + app" else "needs the laptop"
         else -> ""
     }
@@ -40,7 +40,7 @@ object Presets {
     fun cinemaSource(focused: String?, screens: List<String>, streaming: Set<String>): String {
         if (focused != null && (focused.startsWith("app:") || focused in streaming)) return focused
         screens.firstOrNull { it.startsWith("app:") }?.let { return it }
-        return listOf("laptop:0", "laptop:1").firstOrNull { it in streaming } ?: ScreenSpec.CARD
+        return streaming.filter { it.startsWith("laptop:") }.minOrNull() ?: ScreenSpec.CARD
     }
 
     /**
@@ -50,50 +50,69 @@ object Presets {
     fun layout(name: String, first: String = ScreenSpec.CARD, app: String = ScreenSpec.CARD): Layout? = when (name) {
         // One big screen straight ahead, curved like a cinema's.
         CINEMA -> Layout(mutableListOf(ScreenSpec(first, 0f, 0f, 60f, 16f / 9f, curved = true)))
-        // Two laptop monitors side by side at 1:1, meeting straight ahead.
-        DESK -> Layout(
-            mutableListOf(
-                ScreenSpec("laptop:0", -ONE_TO_ONE / 2 - 0.5f, 0f, ONE_TO_ONE),
-                ScreenSpec("laptop:1", ONE_TO_ONE / 2 + 0.5f, 0f, ONE_TO_ONE),
-            ),
-        )
-        // The two monitors, and an app screen above them.
+        // One laptop monitor straight ahead at 1:1; more come beside it as you add them ([place]).
+        DESK -> Layout(mutableListOf(ScreenSpec("laptop:0", 0f, 0f, ONE_TO_ONE)))
+        // The monitor a little left of straight ahead, an app screen to its right.
         DESK_APP -> Layout(
             mutableListOf(
-                ScreenSpec("laptop:0", -ONE_TO_ONE / 2 - 0.5f, 0f, ONE_TO_ONE),
-                ScreenSpec("laptop:1", ONE_TO_ONE / 2 + 0.5f, 0f, ONE_TO_ONE),
-                ScreenSpec(app, 0f, 23.5f, 36f),
+                ScreenSpec("laptop:0", -DESK_APP_SHIFT, 0f, ONE_TO_ONE),
+                ScreenSpec(app, -DESK_APP_SHIFT + ONE_TO_ONE / 2 + GAP + APP_WIDTH / 2, 0f, APP_WIDTH),
             ),
         )
         else -> null
     }
 
+    /** Degrees between screens side by side. */
+    private const val GAP = 1f
+
+    /** How far left of straight ahead Desk + app puts the laptop monitor, so the app beside it stays in reach. */
+    private const val DESK_APP_SHIFT = 10f
+
     /** The default when nothing was saved: the test card straight ahead, 40° wide. */
     fun welcome() = Layout(mutableListOf(ScreenSpec(ScreenSpec.CARD, 0f, 0f, 40f)))
 
     /**
-     * The layout with the screen(s) of a laptop stream that connected while no screen showed it: where Desk puts
-     * them, at 1:1 for the stream's size (`width` x `height` pixels; a `wide` stream is two halves side by side).
-     * Test cards in the way go. Null when that would make more than [Layout.MAX_SCREENS].
+     * The layout with the screen(s) of a laptop stream that connected while no screen showed it, at 1:1 for the
+     * stream's size (`width` x `height` pixels; a `wide` stream is two halves side by side, straight ahead): a monitor
+     * goes [beside] the laptop screens up already. Test cards in the way go. Null when there's no room for it.
      */
     fun place(layout: Layout, source: String, width: Int, height: Int): Layout? {
-        val adds = when (source) {
-            "wide" -> {
+        if (layout.indexOf(source) >= 0) return layout.copy()
+        val adds = when {
+            source == "wide" -> {
                 val w = (width / 2) * ONE_TO_ONE / 1920f
                 val aspect = (width / 2f) / height
-                listOf(ScreenSpec("wide:0", -w / 2 - 0.5f, 0f, w, aspect), ScreenSpec("wide:1", w / 2 + 0.5f, 0f, w, aspect))
+                listOf(ScreenSpec("wide:0", -w / 2 - GAP / 2, 0f, w, aspect), ScreenSpec("wide:1", w / 2 + GAP / 2, 0f, w, aspect))
             }
-            "laptop:0", "laptop:1" -> {
-                val w = width * ONE_TO_ONE / 1920f
-                val side = if (source == "laptop:0") -1 else 1
-                listOf(ScreenSpec(source, side * (w / 2 + 0.5f), 0f, w, width.toFloat() / height))
-            }
+            source.startsWith("laptop:") -> listOf(beside(layout, source, width * ONE_TO_ONE / 1920f, width.toFloat() / height) ?: return null)
             else -> return null
         }
         val out = layout.copy()
         out.screens.removeAll { s -> s.kind == "card" && adds.any { overlap(it, s) } }
         for (a in adds) if (out.indexOf(a.source) < 0) out.screens.add(a)
         return if (out.screens.size > Layout.MAX_SCREENS) null else out
+    }
+
+    /**
+     * Where a laptop monitor `w` degrees wide goes: straight ahead when no laptop screen is up; else right of the
+     * rightmost one or left of the leftmost, at its height, whichever is nearer straight ahead (right on a tie) and
+     * free; else the first free place out from straight ahead. Test cards don't count: they make way.
+     */
+    private fun beside(layout: Layout, source: String, w: Float, aspect: Float): ScreenSpec? {
+        val others = layout.screens.filter { it.kind != "card" }
+        val laptops = others.filter { it.kind == "laptop" || it.kind == "wide" }
+        val tries = ArrayList<ScreenSpec>()
+        if (laptops.isEmpty()) {
+            tries.add(ScreenSpec(source, 0f, 0f, w, aspect))
+        } else {
+            val right = laptops.maxBy { it.yaw + it.width / 2 }
+            val left = laptops.minBy { it.yaw - it.width / 2 }
+            tries.add(ScreenSpec(source, Focus.angle(right.yaw + right.width / 2 + GAP + w / 2), right.pitch, w, aspect))
+            tries.add(ScreenSpec(source, Focus.angle(left.yaw - left.width / 2 - GAP - w / 2), left.pitch, w, aspect))
+            tries.sortBy { abs(it.yaw) }
+        }
+        for (step in 1 until 18) for (side in intArrayOf(1, -1)) tries.add(ScreenSpec(source, side * step * 10f, 0f, w, aspect))
+        return tries.firstOrNull { t -> others.none { overlap(it, t) } }
     }
 
     /**

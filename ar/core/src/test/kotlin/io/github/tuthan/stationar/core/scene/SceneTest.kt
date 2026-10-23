@@ -143,7 +143,9 @@ class SceneTest {
         assertEquals(ScreenSpec.CARD, Presets.cinemaSource(null, listOf("card"), emptySet()))
         // The laptop presets say when they'd only wait.
         assertEquals("needs the laptop", Presets.detail(Presets.DESK, laptop = false))
-        assertEquals("2 laptop screens", Presets.detail(Presets.DESK, laptop = true))
+        assertEquals("1 laptop screen", Presets.detail(Presets.DESK, laptop = true))
+        // The first laptop that streams, by number.
+        assertEquals("laptop:0", Presets.cinemaSource(null, listOf("card"), setOf("laptop:2", "laptop:0", "wide")))
     }
 
     @Test
@@ -157,13 +159,15 @@ class SceneTest {
 
     @Test
     fun aConnectingLaptopTakesTheCardsPlace() {
+        // The first straight ahead, in the card's place; the next beside it, right first.
         val one = assertNotNull(Presets.place(Presets.welcome(), "laptop:0", 1920, 1080))
         assertEquals(listOf("laptop:0"), one.screens.map { it.source })
-        assertEquals(-(Presets.ONE_TO_ONE / 2 + 0.5f), one.screens[0].yaw, 1e-4f)
+        assertEquals(0f, one.screens[0].yaw)
         val wider = assertNotNull(Presets.place(one, "laptop:1", 2560, 1600))
         assertEquals(listOf("laptop:0", "laptop:1"), wider.screens.map { it.source })
         assertEquals(1.6f, wider.screens[1].aspect, 1e-4f)
         assertEquals(58.93f, wider.screens[1].width, 0.01f)
+        assertEquals(Presets.ONE_TO_ONE / 2 + 1f + 58.93f / 2, wider.screens[1].yaw, 0.01f)
         // Already there: nothing changes.
         assertEquals(wider, Presets.place(wider, "laptop:1", 2560, 1600))
         val wide = assertNotNull(Presets.place(Presets.welcome(), "wide", 3840, 1080))
@@ -175,6 +179,26 @@ class SceneTest {
         val full = Layout(MutableList(Layout.MAX_SCREENS) { ScreenSpec("app:a$it", 0f, 40f) })
         assertNull(Presets.place(full, "laptop:0", 1920, 1080))
         assertNull(Presets.place(Presets.welcome(), "app:x", 1920, 1080))
+    }
+
+    @Test
+    fun addedLaptopScreensGoBesideTheOthers() {
+        // Desk: one monitor straight ahead; the second to its right, the third to the left (nearer than further right).
+        val desk = assertNotNull(Presets.layout(Presets.DESK))
+        assertEquals(listOf("laptop:0"), desk.screens.map { it.source })
+        val two = assertNotNull(Presets.place(desk, "laptop:1", 1920, 1080))
+        val three = assertNotNull(Presets.place(two, "laptop:2", 1920, 1080))
+        val step = Presets.ONE_TO_ONE + 1f
+        for ((want, s) in listOf(0f, step, -step).zip(three.screens)) assertEquals(want, s.yaw, 1e-4f, "${three.screens}")
+        // Desk + app: the app is right of the monitor, so the next monitor goes left.
+        val app = "app:org.videolan.vlc"
+        val deskApp = assertNotNull(Presets.layout(Presets.DESK_APP, app = app))
+        assertTrue(deskApp.screens[1].yaw > deskApp.screens[0].yaw && deskApp.screens[1].source == app)
+        val more = assertNotNull(Presets.place(deskApp, "laptop:1", 1920, 1080))
+        assertEquals(deskApp.screens[0].yaw - step, more.screens[2].yaw, 1e-4f)
+        // A monitor moved up: the next one sits beside it, at its height.
+        val up = desk.copy().apply { screens[0].pitch = 10f }
+        assertEquals(10f, assertNotNull(Presets.place(up, "laptop:1", 1920, 1080)).screens[1].pitch)
     }
 
     @Test

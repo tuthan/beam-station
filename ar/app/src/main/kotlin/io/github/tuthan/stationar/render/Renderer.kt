@@ -353,11 +353,18 @@ class Renderer(
         manualPitch = (manualPitch + dPitch).coerceIn(-60f, 60f)
     }
 
-    /** Moves screen `index` by dYaw degrees. */
+    /** Moves screen `index` by dYaw degrees to the right and dPitch up. */
     fun nudge(index: Int, dYaw: Float, dPitch: Float) {
         val slot = slots.getOrNull(index) ?: return
         slot.spec.yaw = Focus.angle(slot.spec.yaw + dYaw)
         slot.spec.pitch = (slot.spec.pitch + dPitch).coerceIn(-60f, 60f)
+        build(slot)
+    }
+
+    /** Makes screen `index` `factor` times as wide (and tall), within 10° to 120° across. */
+    fun resize(index: Int, factor: Float) {
+        val slot = slots.getOrNull(index) ?: return
+        slot.spec.width = (slot.spec.width * factor).coerceIn(10f, 120f)
         build(slot)
     }
 

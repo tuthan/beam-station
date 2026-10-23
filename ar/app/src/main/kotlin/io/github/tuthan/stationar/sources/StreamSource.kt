@@ -28,6 +28,8 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
     private var playing: Thread? = null
     /** The Surface the decoder draws into while a stream plays. */
     @Volatile private var decoding: Surface? = null
+    /** The connection once it was answered OK: lines to the laptop ([tell]) only go after that answer. */
+    @Volatile private var playingOn: StreamServer.Connection? = null
 
     /** Access units dropped (waiting for a key frame, or too big), since the last log line. */
     @Volatile private var droppedUnits = 0
@@ -65,6 +67,24 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
     /** Ends the stream now (its laptop was forgotten); the screen keeps its last picture. */
     fun disconnect() {
         synchronized(lock) { current }?.close()
+    }
+
+    /** Sends the laptop a line on this stream's connection (not on the main thread); false when there's none or it failed. */
+    fun tell(line: String): Boolean {
+        val conn = playingOn ?: return false
+        return try {
+            conn.answer(line)
+            true
+        } catch (e: IOException) {
+            AppLog.i("$name: couldn't tell the laptop $line: ${e.message}")
+            false
+        }
+    }
+
+    /** You closed this screen: the laptop is told ([Handshake.GONE]) and the stream ends. */
+    fun gone() {
+        tell(Handshake.GONE)
+        disconnect()
     }
 
     /**
@@ -115,6 +135,7 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
             height = hello.height
             drain = Thread({ drain(c) }, "stationar-drain").apply { start() }
             conn.answer("OK")
+            playingOn = conn
             conn.timeout(StreamServer.STREAM_TIMEOUT_MS)
             AppLog.i("$name: playing \"$laptop\" with $decoderName")
             feed(c, hello.codec, conn)
@@ -134,6 +155,7 @@ class StreamSource(name: String) : SurfaceSource(name, 1920, 1080) {
             conn.close()
             synchronized(lock) {
                 // A connection that replaced this one keeps its own state.
+                if (playingOn === conn) playingOn = null
                 if (current === conn) {
                     current = null
                     playing = null
