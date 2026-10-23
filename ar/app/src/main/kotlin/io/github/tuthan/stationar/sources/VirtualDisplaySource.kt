@@ -44,6 +44,9 @@ class VirtualDisplaySource(
     /** The app's root task on it, once started (-1 before). */
     @Volatile var task = -1
 
+    /** The app closed itself on it (Back on its first page, a crash): the display is empty until it opens again. */
+    @Volatile var appClosed = false
+
     @Synchronized
     override fun onSurface(surface: Surface) {
         display?.let {

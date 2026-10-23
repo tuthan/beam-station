@@ -1,5 +1,6 @@
 package io.github.tuthan.stationar.sources
 
+import android.graphics.Bitmap
 import android.graphics.SurfaceTexture
 import android.opengl.Matrix
 import android.os.Handler
@@ -25,6 +26,12 @@ abstract class Source(val name: String) {
 
     /** What the HUD calls it. */
     @Volatile var label: String = name
+
+    /** Its card's picture (an app's icon), or null. */
+    @Volatile var icon: Bitmap? = null
+
+    /** Why the screen shows its card instead of its frames (its app closed, say), or null. */
+    @Volatile var note: String? = null
 
     /** The renderer's frame number of the last [update], so a source shared by two screens updates once a frame. */
     @JvmField var stamp = 0L

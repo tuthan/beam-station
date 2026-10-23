@@ -1,6 +1,8 @@
 package io.github.tuthan.stationar
 
 import android.content.Context
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import io.github.tuthan.stationar.core.store.KvStore
 import io.github.tuthan.stationar.core.store.Settings
 import io.github.tuthan.stationar.core.stream.Pairing
@@ -44,4 +46,22 @@ object StationAr {
 
     /** App labels by package, filled when the apps are listed. */
     val appNames = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /** `pkg`'s icon, square, for the panel's tiles and an app screen's card; made once. Null when it has none. */
+    fun appIcon(c: Context, pkg: String): Bitmap? {
+        appIcons[pkg]?.let { return it }
+        val d = try {
+            c.packageManager.getApplicationIcon(pkg)
+        } catch (_: Exception) {
+            return null
+        }
+        val b = Bitmap.createBitmap(ICON_PX, ICON_PX, Bitmap.Config.ARGB_8888)
+        d.setBounds(0, 0, ICON_PX, ICON_PX)
+        d.draw(Canvas(b))
+        appIcons[pkg] = b
+        return b
+    }
+
+    private val appIcons = java.util.concurrent.ConcurrentHashMap<String, Bitmap>()
+    private const val ICON_PX = 128
 }

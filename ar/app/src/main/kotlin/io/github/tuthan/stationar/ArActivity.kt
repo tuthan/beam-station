@@ -470,6 +470,12 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             panel.focusedItem()?.let { act(it.id) }
             return
         }
+        // On a screen whose app closed, OK opens it again.
+        val spec = layout.screens.getOrNull(focusedIndex)
+        if (spec != null && spec.kind == "app" && apps.appClosed(spec.source)) {
+            apps.reopen(spec.source)
+            return
+        }
         openPanel()
     }
 
@@ -520,7 +526,10 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             PanelLayout.Item("screen-done", "Done"),
         )
         // A film in a screen costs the GPU a pass per frame; full screen it costs nothing, without head tracking.
-        if (spec.kind == "app") items.add(0, PanelLayout.Item("screen-full", "Watch full screen", "Back returns"))
+        if (spec.kind == "app") {
+            items.add(0, if (apps.appClosed(spec.source)) PanelLayout.Item("screen-reopen", "Open again")
+                else PanelLayout.Item("screen-full", "Watch full screen", "Back returns"))
+        }
         panel.set(listOf("" to items))
         showPanelNow()
     }
@@ -643,6 +652,11 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 closePanel()
             }
             id == "screen-done" -> closePanel()
+            id == "screen-reopen" -> {
+                val source = layout.screens.getOrNull(menuScreen)?.source
+                closePanel()
+                if (source != null) apps.reopen(source)
+            }
             id == "screen-full" -> {
                 val source = layout.screens.getOrNull(menuScreen)?.source ?: return closePanel()
                 closePanel()

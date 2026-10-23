@@ -4,6 +4,7 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.RectF
 import android.graphics.Typeface
 import android.opengl.EGL14
 import android.opengl.GLES20
@@ -50,6 +51,8 @@ class Renderer(
         val frame = ScreenMesh()
         val model = FloatArray(16)
         var placeholder = 0
+        /** The source's note when [placeholder] was drawn: a new one draws it again. */
+        var placeholderNote: String? = null
     }
 
     val pose = HeadPose(deviceFromHead)
@@ -172,11 +175,19 @@ class Renderer(
                 updating += SystemClock.elapsedRealtimeNanos() - t
                 source.stamp = frameNumber
             }
-            if (source != null && source.live) {
+            val note = source?.note
+            if (source != null && source.live && note == null) {
                 val prog = if (source.external) p.external else p.bitmap
                 prog.draw(slot.mesh.vertices, slot.mesh.count, mvp, source.texture, source.texMatrix, slot.u0, 0f, slot.u1, 1f, 1f)
             } else {
-                if (slot.placeholder == 0) slot.placeholder = placeholder(slot)
+                if (slot.placeholder != 0 && slot.placeholderNote != note) {
+                    Gl.deleteTexture(slot.placeholder)
+                    slot.placeholder = 0
+                }
+                if (slot.placeholder == 0) {
+                    slot.placeholder = placeholder(slot)
+                    slot.placeholderNote = note
+                }
                 p.bitmap.draw(slot.mesh.vertices, slot.mesh.count, mvp, slot.placeholder, Gl.FLIP_V, 0f, 0f, 1f, 1f, 1f)
             }
         }
@@ -298,7 +309,7 @@ class Renderer(
         slot.placeholder = 0
     }
 
-    /** A screen whose source shows nothing yet: its name and what it's waiting for. */
+    /** A screen whose source shows nothing (yet, or any more): its icon, its name, and what it's waiting for. */
     private fun placeholder(slot: Slot): Int {
         val b = Bitmap.createBitmap(960, 540, Bitmap.Config.ARGB_8888)
         val c = Canvas(b)
@@ -309,10 +320,14 @@ class Renderer(
             textAlign = Paint.Align.CENTER
             typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         }
-        c.drawText(slot.source?.label ?: slot.spec.source, 480f, 250f, paint)
+        val icon = slot.source?.icon
+        // With an icon, the lines move down under it.
+        val y = if (icon != null) 330f else 250f
+        if (icon != null) c.drawBitmap(icon, null, RectF(420f, 150f, 540f, 270f), paint)
+        c.drawText(slot.source?.label ?: slot.spec.source, 480f, y, paint)
         paint.textSize = 28f
         paint.color = Color.rgb(150, 180, 195)
-        c.drawText(waiting(slot.spec), 480f, 310f, paint)
+        c.drawText(slot.source?.note ?: waiting(slot.spec), 480f, y + 60f, paint)
         val t = Gl.texture2d(b)
         b.recycle()
         return t

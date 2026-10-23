@@ -57,8 +57,13 @@ class AppScreens(private val context: Context, private val listener: Listener) :
 
     /** The source for screen `name` (`app:<package>`), made once (GL thread, from the renderer). */
     fun source(name: String): VirtualDisplaySource {
-        StationAr.appName(context, name.removePrefix("app:"))
-        return sources.getOrPut(name) { VirtualDisplaySource(name, context, this, size) }
+        val pkg = name.removePrefix("app:")
+        return sources.getOrPut(name) {
+            VirtualDisplaySource(name, context, this, size).also {
+                it.label = StationAr.appName(context, pkg)
+                it.icon = StationAr.appIcon(context, pkg)
+            }
+        }
     }
 
     /** App screens that exist now. */
@@ -87,6 +92,8 @@ class AppScreens(private val context: Context, private val listener: Listener) :
                     if (t.display != 0) continue
                     if (helper.call(Command.MoveTask(t.id, src.displayId)) == null) continue
                     AppLog.i("${src.name}: its task ${t.id} opened on the glasses' display; moved into its screen")
+                    // Its app had closed there: this is its app now.
+                    if (src.appClosed) opened(src, t.id)
                     moved = true
                 }
                 // Root tasks come top first: the first one left showing on display 0 covers AR.
@@ -231,21 +238,79 @@ class AppScreens(private val context: Context, private val listener: Listener) :
                 if (wanted == source.name) focusNow()
                 return@background
             }
-            val component = launchComponent(pkg)
-            if (component == null) {
-                status("${StationAr.appName(context, pkg)} has no TV screen to open")
-                return@background
-            }
-            val reply = helper.call(Command.Launch(displayId, component))
-            if (reply == null) {
-                status("${StationAr.appName(context, pkg)} didn't open in its screen")
-                return@background
-            }
-            source.task = reply.trim().toIntOrNull() ?: -1
-            AppLog.i("${source.name}: started on display $displayId, task ${source.task}")
-            status(null)
-            if (wanted == source.name) focusNow()
+            launch(source, displayId)
         }
+    }
+
+    /** Worker: starts the source's app on its display; false when it didn't start. */
+    private fun launch(source: VirtualDisplaySource, displayId: Int): Boolean {
+        val pkg = source.name.removePrefix("app:")
+        val component = launchComponent(pkg)
+        if (component == null) {
+            status("${StationAr.appName(context, pkg)} has no TV screen to open")
+            return false
+        }
+        val reply = helper.call(Command.Launch(displayId, component))
+        if (reply == null) {
+            status("${StationAr.appName(context, pkg)} didn't open in its screen")
+            return false
+        }
+        source.task = reply.trim().toIntOrNull() ?: -1
+        AppLog.i("${source.name}: started on display $displayId, task ${source.task}")
+        status(null)
+        if (wanted == source.name) focusNow()
+        return true
+    }
+
+    // MARK: - An app that closes in its screen
+
+    /** Whether screen `name`'s app closed itself there (OK on the screen opens it again). */
+    fun appClosed(name: String): Boolean = sources[name]?.appClosed == true
+
+    /**
+     * Worker: an app can close itself inside its screen (Back on its first page, a crash). Its display is empty then,
+     * and would keep the remote with nothing to drive. The screen's card says so instead, and the remote goes back to
+     * AR, where OK on the screen opens the app again ([reopen]).
+     */
+    private fun checkClosed() {
+        if (closed.get() || !helper.running) return
+        val watched = watch?.source
+        val open = sources.values.filter { it.displayId >= 0 && it.task >= 0 && it !== watched }
+        if (open.isEmpty()) return
+        // No answer isn't "no tasks".
+        val tasks = TaskInfo.decodeAll(helper.call(Command.Tasks) ?: return)
+        var any = false
+        for (src in open) {
+            if (tasks.any { it.display == src.displayId }) continue
+            AppLog.i("${src.name}: its app closed in its screen")
+            src.task = -1
+            src.appClosed = true
+            src.note = CLOSED_NOTE
+            any = true
+        }
+        if (any) focusNow()
+    }
+
+    private val lookForClosed = Runnable { background { checkClosed() } }
+
+    /** Opens screen `name`'s app again, after it closed there. */
+    fun reopen(name: String) {
+        val src = sources[name] ?: return
+        if (!src.appClosed) return
+        src.note = OPENING_NOTE
+        background {
+            val id = src.displayId
+            if (closed.get() || id < 0 || !ensureHelper()) return@background
+            if (launch(src, id)) opened(src, src.task) else src.note = CLOSED_NOTE
+        }
+    }
+
+    /** Worker: the app is on its screen again, as task `task`. */
+    private fun opened(src: VirtualDisplaySource, task: Int) {
+        src.task = task
+        src.appClosed = false
+        src.note = null
+        if (wanted == src.name) focusNow()
     }
 
     override fun onDisplayGone(source: VirtualDisplaySource, displayId: Int) {
@@ -298,7 +363,11 @@ class AppScreens(private val context: Context, private val listener: Listener) :
             if (ok || closed.get() || !helper.running) break
             Thread.sleep(FOCUS_RETRY_MS)
         }
-        if (!ok) return
+        if (!ok) {
+            // No window took the touch: its app may have closed there.
+            if (display != 0) checkClosed()
+            return
+        }
         focusedDisplay = display
         AppLog.i("keys: the remote drives display $display")
         main.post { filter.live = display != 0 }
@@ -350,6 +419,11 @@ class AppScreens(private val context: Context, private val listener: Listener) :
             val phase = if (f.down) Command.Key.Phase.DOWN else Command.Key.Phase.UP
             background { helper.call(Command.Key(f.code, phase)) }
         }
+        // Back on an app's first page closes it: look a moment later.
+        if (r.resend == KeyFilter.BACK || r.forward?.let { it.code == KeyFilter.BACK && !it.down } == true) {
+            main.removeCallbacks(lookForClosed)
+            main.postDelayed(lookForClosed, CLOSED_CHECK_MS)
+        }
         if (r.checkAt != 0L) {
             main.removeCallbacks(timeout)
             main.postAtTime(timeout, r.checkAt)
@@ -387,6 +461,7 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         main.post {
             filter.live = false
             main.removeCallbacks(timeout)
+            main.removeCallbacks(lookForClosed)
         }
         background {
             for (s in sources.values) {
@@ -405,6 +480,10 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         private const val FOCUS_RETRY_MS = 300L
         /** How often to look at the glasses' display while an app is full screen (each look runs `am stack list`). */
         private const val WATCH_POLL_MS = 2000L
+        /** After Back went to an app: time for it to finish before looking whether it closed. */
+        private const val CLOSED_CHECK_MS = 1000L
+        private const val CLOSED_NOTE = "Closed  ·  OK opens it again"
+        private const val OPENING_NOTE = "Opening…"
 
         /** Apps a TV launcher lists: (package, label), without Station AR and Station Home. */
         fun launchable(c: Context): List<Pair<String, String>> {
