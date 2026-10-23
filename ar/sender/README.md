@@ -27,8 +27,18 @@ sender/linux/station-ar-send pair 192.168.199.98   # once: check the key, type t
 sender/linux/station-ar-send run                   # one 1920x1080@60 monitor
 sender/linux/station-ar-send run --monitors 2      # two, side by side in AR
 sender/linux/station-ar-send run --wide            # one 3840x1080 monitor, shown as two screens
+sender/linux/station-ar-send run --workspace 2     # a new monitor, with your workspace 2 moved onto it
+sender/linux/station-ar-send run --mirror          # no new monitor: the one you're on, as it is
+sender/linux/station-ar-send run --mirror DP-1     # a named one (hyprctl monitors lists them)
 sender/linux/station-ar-send run --source test     # a test pattern with the laptop's clock and a frame counter
 ```
+
+**Extend or mirror.** By default you get a new monitor that only the glasses show, sharp at 1:1 (one laptop pixel per
+glasses pixel in *Desk*). `--workspace N` moves workspace N (Hyprland's number, `hyprctl workspaces`) onto it while
+streaming and back where it was on exit. `--mirror` shows a monitor you already have instead, scaled on the GPU to
+at most 1080 lines (`--size`'s height) and keeping its shape: a 3440x1440 ultrawide streams as 2576x1080, and the
+screen in AR takes that 21:9 shape. The glasses have 1920 pixels across, so a big monitor's text comes out small:
+mirroring suits a laptop panel, a film or a talk better than a day of work.
 
 `discover` asks the mDNS group and reads the answers on UDP 5353, which ufw's default rules let in. If it still
 finds nothing (another firewall, or a network that drops multicast), give the Station's address instead: every
@@ -38,8 +48,14 @@ Options for `run`: `--size 2560x1440`, `--fps 60`, `--codec hevc|avc` (AVC can't
 `--bitrate 15M`, `--device /dev/dri/renderD128`, `-v` (bitrate every 10 s).
 
 `run` makes a Hyprland headless output per monitor (`STATIONAR-0`, `STATIONAR-1`, or `STATIONAR-WIDE`), to the right
-of your monitors, and removes it when it exits, Ctrl-C included. Move windows onto it as onto any monitor. If the
-network drops, it reconnects (every 0.5 to 3 s) and the screen in AR comes back where it was.
+of your monitors at scale 1, and removes it when it exits, Ctrl-C included. Move windows onto it as onto any monitor.
+It waits for Hyprland to finish placing the output before recording it, and records it again whenever it moves or
+changes size (a display plugged in, Omarchy renumbering workspaces): wf-recorder keeps an output's geometry from its
+start, and a stale one slides the picture down the screen in AR. If the network drops, it reconnects (every 0.5 to
+3 s) and the screen in AR comes back where it was; stopped for good, the screen shows its card after 4 s.
+
+Hyprland 0.56 with a Lua config refuses `hyprctl keyword` and `dispatch` as they were, with exit status 0 all the
+same; the script reads the answer and uses `hyprctl eval` there.
 
 Pairings live in `~/.config/station-ar/hosts` (readable only by you): each Station's key fingerprint, address,
 port and token. `forget <address>` or `forget all` removes them here.
@@ -52,6 +68,8 @@ before every frame. The encoder restarts on each connection, so the Station gets
 - `--source test` and `--source file`: one ffmpeg per screen, `-re` (real time).
 - `--source wf-recorder`: `wf-recorder -o STATIONAR-n -r <fps> -c hevc_vaapi` (a constant frame rate, so the
   Station can tell a dead connection from a still desktop), piped through `ffmpeg -c copy` to insert the delimiters.
+  wf-recorder's VA-API path tags the picture full range, which the Station shows right. `--mirror` adds
+  `-F scale_vaapi=w=W:h=H:format=nv12:out_range=full`.
 
 ## Status (2026-10-22)
 
@@ -61,6 +79,8 @@ before every frame. The encoder restarts on each connection, so the Station gets
 - Against the Station: TLS 1.3 with the Station's AndroidKeyStore key (TLS 1.2 refused), and the key's fingerprint
   matching the one setup shows. `discover` with a unicast answer found nothing because ufw dropped it; it now
   reads the group (not yet rechecked). Pairing and streaming to the Station: not yet, it went off the network.
-- **Not checked at all: `--source wf-recorder`.** wf-recorder isn't installed on this laptop, so its flags
-  (`-r`, `-p`, `-m`, `-f /dev/stdout`) and the headless output commands follow their documentation only. Spike S3.1
-  (wf-recorder vs wl-screenrec vs GStreamer on encode lag, CPU and stability) couldn't run for the same reason.
+- 2026-10-23, wf-recorder 0.6.0, Hyprland 0.56.2 (Lua config): `--source wf-recorder` streams to the Station at
+  60 fps. The first runs showed the desktop slid ~900 rows down the screen: the monitor rule never applied (`keyword`
+  refused), Hyprland put the output at 3440,450 at scale 2 while wf-recorder was starting, and wf-recorder kept that
+  half-made geometry. Fixed by `eval`, waiting for the output to settle, and recording again when it moves.
+  Spike S3.1 (wf-recorder vs wl-screenrec vs GStreamer) still not run.

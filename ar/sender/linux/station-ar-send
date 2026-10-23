@@ -2,7 +2,7 @@
 """station-ar-send: your laptop's extra monitors, streamed to Station AR on the Rokid Station.
 
   station-ar-send pair [HOST]          pair this laptop once (type the PIN shown in the glasses)
-  station-ar-send run [HOST] [options] stream: one or two monitors, or one wide one
+  station-ar-send run [HOST] [options] stream: one or two new monitors, one wide one, or --mirror one you have
   station-ar-send discover             find Stations with AR open on the LAN (mDNS)
   station-ar-send forget [HOST|all]    forget a pairing
 
@@ -35,6 +35,7 @@ DEVICE = "/dev/dri/renderD128"
 MAX_LINE = 256
 
 stopping = threading.Event()
+encoders = []
 
 
 def log(msg):
@@ -199,6 +200,9 @@ def capture_pipeline(args, output, w, h):
     rec = ["wf-recorder", "-y", "-o", output, "-r", str(args.fps), "-c", codec, "-d", args.device,
            "-p", "rc_mode=CBR", "-p", f"b={args.bitrate}", "-p", "bf=0", "-p", f"g={args.fps * 2}",
            "-m", fmt, "-f", "/dev/stdout"]
+    if args.mirror is not None:
+        # A monitor you have, scaled on the GPU to the stream's size: wf-recorder's own VA-API filter, sized.
+        rec[1:1] = ["-F", f"scale_vaapi=w={w}:h={h}:format=nv12:out_range=full"]
     fix = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", fmt, "-i", "-", "-c", "copy",
            "-bsf:v", ("hevc_metadata=aud=insert" if fmt == "hevc" else "h264_metadata=aud=insert"), "-f", fmt, "-"]
     return rec, fix
@@ -211,9 +215,12 @@ class Encoder:
     def __init__(self, args, screen, w, h, output=None):
         self.args, self.screen, self.w, self.h, self.output = args, screen, w, h, output
         self.procs = []
+        self.geometry = None
 
     def start(self):
         if self.output:
+            # wf-recorder keeps the monitor's geometry from its start: [moved] tells when that went stale.
+            self.geometry = monitor_geometry(self.output)
             rec, fix = capture_pipeline(self.args, self.output, self.w, self.h)
             p1 = subprocess.Popen(rec, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
             p2 = subprocess.Popen(fix, stdin=p1.stdout, stdout=subprocess.PIPE, start_new_session=True)
@@ -223,6 +230,20 @@ class Encoder:
             cmd = encoder_command(self.args, self.screen, self.w, self.h)
             self.procs = [subprocess.Popen(cmd, stdout=subprocess.PIPE, start_new_session=True)]
         return self.procs[-1].stdout
+
+    def moved(self):
+        """True when the monitor being captured is no longer where (or the size and scale) it was at the start."""
+        procs = self.procs
+        if not self.output or not procs or procs[0].poll() is not None:
+            return False
+        now = monitor_geometry(self.output)
+        return now is not None and now != self.geometry
+
+    def restart(self):
+        """Ends the capture from another thread: the stream sees the end and starts it again, with a key frame."""
+        for p in self.procs:
+            if p.poll() is None:
+                p.terminate()
 
     def stop(self):
         for p in self.procs:
@@ -239,6 +260,56 @@ class Encoder:
 # MARK: - Hyprland headless outputs
 
 
+def monitor_geometry(name):
+    """Where Hyprland has the output now, as (x, y, width, height, scale, transform), or None."""
+    try:
+        out = subprocess.run(["hyprctl", "-j", "monitors"], capture_output=True, text=True, timeout=3).stdout
+        for m in json.loads(out):
+            if m.get("name") == name:
+                return m["x"], m["y"], m["width"], m["height"], m["scale"], m["transform"]
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def mirrored_monitor(name):
+    """The monitor --mirror shows, as (name, width, height): `name`, or the focused one when empty; None if absent."""
+    try:
+        out = subprocess.run(["hyprctl", "-j", "monitors"], capture_output=True, text=True, timeout=3).stdout
+        for m in json.loads(out):
+            if (m["name"] == name) if name else (m.get("focused") and not m["name"].startswith("STATIONAR-")):
+                return m["name"], m["width"], m["height"]
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+        pass
+    return None
+
+
+def mirror_size(mw, mh, height):
+    """The stream's size for a mirrored mw x mh monitor: its shape, at most `height` tall and 4096 wide, never larger
+    than the monitor; the width a multiple of 16 and the height even, as decoders like."""
+    s = min(1.0, height / mh, 4096 / mw)
+    return max(64, int(mw * s) // 16 * 16), max(64, int(mh * s) // 2 * 2)
+
+
+def workspace_monitor(ws):
+    """The monitor workspace `ws` is on, or None when it doesn't exist (Hyprland drops an empty one)."""
+    try:
+        out = subprocess.run(["hyprctl", "-j", "workspaces"], capture_output=True, text=True, timeout=3).stdout
+        return next((w["monitor"] for w in json.loads(out) if w.get("id") == ws), None)
+    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
+        return None
+
+
+def move_workspace(ws, monitor):
+    """Moves workspace `ws` onto `monitor`; True if Hyprland did. A Lua config (0.56 on) takes `eval`; the older one
+    the dispatcher. Both answer "ok" only when it moved, with exit status 0 either way."""
+    lua = f'hl.dispatch(hl.dsp.workspace.move({{ workspace = "{ws}", monitor = "{monitor}" }}))'
+    for cmd in (["hyprctl", "eval", lua], ["hyprctl", "dispatch", "moveworkspacetomonitor", str(ws), monitor]):
+        if subprocess.run(cmd, capture_output=True, text=True).stdout.strip() == "ok":
+            return True
+    return False
+
+
 class Headless:
     """Extra monitors that exist only for the Station: made on start, removed on exit (Ctrl-C too)."""
 
@@ -248,9 +319,34 @@ class Headless:
     def create(self, name, w, h, fps, x):
         subprocess.run(["hyprctl", "output", "create", "headless", name], check=True, capture_output=True)
         self.made.append(name)
-        subprocess.run(["hyprctl", "keyword", "monitor", f"{name},{w}x{h}@{fps},{x}x0,1"], check=True,
-                       capture_output=True)
-        log(f"monitor {name}: {w}x{h}@{fps}")
+        # Scale 1, out of the way of the real monitors. With a Lua config (Hyprland 0.56 on) `keyword` refuses, exit
+        # status 0 all the same, so its answer is read and `eval` does it there.
+        rule = subprocess.run(["hyprctl", "keyword", "monitor", f"{name},{w}x{h}@{fps},{x}x0,1"],
+                              capture_output=True, text=True)
+        if rule.stdout.strip() != "ok":
+            lua = f'hl.monitor({{ output = "{name}", mode = "{w}x{h}@{fps}", position = "{x}x0", scale = 1 }})'
+            rule = subprocess.run(["hyprctl", "eval", lua], capture_output=True, text=True)
+        if rule.stdout.strip() != "ok":
+            log(f"monitor {name}: Hyprland refused its settings ({rule.stdout.strip()[:120]})")
+        # Hyprland places and scales a new output over a moment: wf-recorder started before that ends records every
+        # frame from the wrong place (the picture slides down the Station's screen, black above it).
+        x, y, mw, mh, scale, _ = self.settle(name) or (0, 0, 0, 0, 0, 0)
+        log(f"monitor {name}: {mw}x{mh}@{fps} at {x},{y}, scale {scale:g}")
+        if (mw, mh, scale) != (w, h, 1):
+            log(f"monitor {name}: not the {w}x{h} at scale 1 asked for; the Station shows what Hyprland made")
+
+    @staticmethod
+    def settle(name, steady=0.5, limit=5.0):
+        """The output's geometry once unchanged for `steady` seconds (or after `limit`)."""
+        last, since, end = None, time.monotonic(), time.monotonic() + limit
+        while time.monotonic() < end and not stopping.is_set():
+            now = monitor_geometry(name)
+            if now != last:
+                last, since = now, time.monotonic()
+            elif now is not None and time.monotonic() - since >= steady:
+                break
+            time.sleep(0.1)
+        return last
 
     def remove_all(self):
         for name in reversed(self.made):
@@ -266,6 +362,7 @@ def stream(args, host, port, entry, fp_pinned, screen, w, h, output=None):
     """One screen: connect, say HELLO, copy the encoder's stream; on any failure, back off and do it again."""
     delay = 0.5
     enc = Encoder(args, screen, w, h, output)
+    encoders.append(enc)
     while not stopping.is_set():
         try:
             s, fp = connect(host, port)
@@ -346,6 +443,14 @@ def cmd_run(args):
     if args.source == "file" and not args.file:
         print("--source file needs --file PATH", file=sys.stderr)
         return 2
+    if args.mirror is not None and (args.source != "wf-recorder" or args.wide or args.monitors != 1
+                                    or args.workspace is not None):
+        print("--mirror shows one monitor you have: not with --source, --wide, --monitors 2 or --workspace",
+              file=sys.stderr)
+        return 2
+    if args.workspace is not None and args.source != "wf-recorder":
+        print("--workspace needs the real monitors (no --source)", file=sys.stderr)
+        return 2
     if missing_tools(args):
         return 1
     host = args.host or pick_host(args, need_paired=True)
@@ -357,6 +462,15 @@ def cmd_run(args):
     fp_pinned, entry = pinned
     port = args.port if args.port != PORT else entry.get("port", PORT)
     w, h = args.size
+    mirrored = None
+    if args.mirror is not None:
+        mirrored = mirrored_monitor(args.mirror)
+        if mirrored is None:
+            print(f"No monitor {args.mirror} (hyprctl monitors lists them)" if args.mirror
+                  else "No focused monitor to mirror: name one, e.g. --mirror DP-1", file=sys.stderr)
+            return 2
+        w, h = mirror_size(mirrored[1], mirrored[2], h)
+        log(f"mirroring {mirrored[0]} ({mirrored[1]}x{mirrored[2]}) as {w}x{h}")
     if args.wide:
         screens = [("wide", w * 2, h)]
     else:
@@ -377,22 +491,41 @@ def cmd_run(args):
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGHUP, on_signal)
     threads = []
+    home = None
     try:
         for i, (screen, sw, sh) in enumerate(screens):
             output = None
-            if args.source == "wf-recorder":
+            if mirrored:
+                output = mirrored[0]
+            elif args.source == "wf-recorder":
                 output = f"STATIONAR-{screen.upper()}"
                 headless.create(output, sw, sh, args.fps, 10000 + i * sw)
             t = threading.Thread(target=stream, args=(args, host, port, entry, fp_pinned, screen, sw, sh, output),
                                  daemon=True)
             t.start()
             threads.append(t)
+        if args.workspace is not None:
+            # Your windows on the Station's monitor; back where they were on exit.
+            home = workspace_monitor(args.workspace)
+            if home is None:
+                log(f"workspace {args.workspace} doesn't exist (Hyprland keeps none without windows); nothing moved")
+            elif move_workspace(args.workspace, headless.made[0]):
+                log(f"workspace {args.workspace} moved from {home} to {headless.made[0]}")
+            else:
+                log(f"Hyprland didn't move workspace {args.workspace}")
+                home = None
         while not stopping.is_set() and any(t.is_alive() for t in threads):
-            stopping.wait(0.5)
+            stopping.wait(1.0)
+            for enc in encoders:
+                if enc.moved():
+                    log(f"monitor {enc.output} moved or changed size: capturing it again")
+                    enc.restart()
     finally:
         stopping.set()
         for t in threads:
             t.join(timeout=5)
+        if home is not None and move_workspace(args.workspace, home):
+            log(f"workspace {args.workspace} back on {home}")
         headless.remove_all()
     return 0
 
@@ -567,7 +700,12 @@ def main(argv=None):
     pr.add_argument("--file", help="the video for --source file")
     pr.add_argument("--monitors", type=int, choices=[1, 2], default=1)
     pr.add_argument("--wide", action="store_true", help="one stream twice as wide, shown as two screens")
-    pr.add_argument("--size", type=size, default=(1920, 1080), help="each monitor's size (default 1920x1080)")
+    pr.add_argument("--mirror", nargs="?", const="", metavar="OUTPUT",
+                    help="show a monitor you have (default: the focused one) instead of adding one")
+    pr.add_argument("--workspace", type=int, metavar="N",
+                    help="move workspace N onto the Station's monitor while streaming, back on exit")
+    pr.add_argument("--size", type=size, default=(1920, 1080),
+                    help="each monitor's size (default 1920x1080); with --mirror only the height counts")
     pr.add_argument("--fps", type=int, default=60)
     pr.add_argument("--codec", choices=["hevc", "avc"], default="hevc")
     pr.add_argument("--bitrate", default="15M")
