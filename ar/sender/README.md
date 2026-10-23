@@ -64,8 +64,10 @@ port and token. `forget <address>` or `forget all` removes them here.
 
 ## Encoding
 
-`hevc_vaapi`, constant bitrate (15 Mbit/s by default), no B-frames, `async_depth=1`, a key frame every 30 s, an
-access-unit delimiter before every frame. The encoder restarts on each connection, so the Station gets a key frame at
+`hevc_vaapi`, variable bitrate capped at `--bitrate` (15 Mbit/s by default), no B-frames, `async_depth=1`, a key
+frame every 1800 frames (30 s at 60 fps; a desktop has frames only when it changes, so longer), an access-unit
+delimiter before every frame. Not constant bitrate: it pads each frame to its share of the bitrate, ~28 KB at
+15M/60 even for a picture that didn't change. The encoder restarts on each connection, so the Station gets a key frame at
 once; TCP loses nothing, so more key frames would only be hitches on a slow link (each is ~10x a frame).
 
 The encoder writes FLV, which says where each frame ends, and the script makes the Annex-B the Station reads: each
@@ -80,9 +82,14 @@ used to insert the delimiters (it parses raw HEVC, so a frame ends where the nex
 And a still desktop went silent, so the Station dropped the stream every 10–40 s and it took seconds to come back.
 
 - `--source test` and `--source file`: one ffmpeg per screen, `-re` (real time).
-- `--source wf-recorder`: `wf-recorder -o STATIONAR-n -r <fps> -c hevc_vaapi -m flv`. wf-recorder's VA-API path tags
-  the picture full range, which the Station shows right. `--mirror` adds
-  `-F scale_vaapi=w=W:h=H:format=nv12:out_range=full`.
+- `--source wf-recorder`: `wf-recorder -o STATIONAR-n -F settb=1/<fps>,scale_vaapi=format=nv12:out_range=full
+  -c hevc_vaapi -m flv`. wf-recorder's VA-API filter tags the picture full range, which the Station shows right;
+  `--mirror` sizes it (`scale_vaapi=w=W:h=H:...`). No `-r`: it adds ffmpeg's `fps` filter, which keeps each frame
+  until the next one comes and then sends all the repeats that fill the gap at once, so after a pause the picture
+  ran seconds behind (measured on a headless output: frames out up to 4 s after their own timestamp, against 22 ms
+  without it). `settb` gives the encoder the frame rate to share the bitrate by: wf-recorder's own time base is
+  1 µs, which the encoder takes for a million frames a second. Frames closer than 1/fps share a timestamp, which
+  FLV takes and the Station doesn't read.
 
 ## Status (2026-10-22)
 
@@ -96,4 +103,6 @@ And a still desktop went silent, so the Station dropped the stream every 10–40
   60 fps. The first runs showed the desktop slid ~900 rows down the screen: the monitor rule never applied (`keyword`
   refused), Hyprland put the output at 3440,450 at scale 2 while wf-recorder was starting, and wf-recorder kept that
   half-made geometry. Fixed by `eval`, waiting for the output to settle, and recording again when it moves.
+  Then a lag of a few seconds that grew with each pause: wf-recorder's `-r` (see Encoding); the Station's own logs
+  showed bursts of 120 to 177 frames a second decoded from a 60 fps sender.
   Spike S3.1 (wf-recorder vs wl-screenrec vs GStreamer) still not run.

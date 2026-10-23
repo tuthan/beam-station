@@ -169,19 +169,20 @@ def size(text):
     return int(m.group(1)), int(m.group(2))
 
 
-# A key frame every 30 s: TCP loses nothing, every connection starts with one, and each is ~10x a frame, a hitch
-# on a slow link (every 2 s, it was).
+# A key frame every 30 s of frames (longer on a desktop, which has frames only when it changes): TCP loses nothing,
+# every connection starts with one, and each is ~10x a frame, a hitch on a slow link (every 2 s, it was).
 KEY_EVERY_S = 30
 # No frame for this long (a still desktop): a keepalive, well inside the Station's 5 s.
 IDLE_S = 1.0
 
 
 def encoder_args(args):
-    """ffmpeg output options: VA-API, constant bitrate, no B-frames, one frame in flight in the encoder (the default 2
-    keeps each frame until the next comes, which on a still desktop is until something changes), a rare key frame;
-    FLV, which says where each frame ends ([Frames] makes the Annex-B)."""
+    """ffmpeg output options: VA-API, variable bitrate capped at --bitrate (constant bitrate pads every frame to its
+    share, ~28 KB at 15M/60 for a picture that didn't change), no B-frames, one frame in flight in the encoder (the
+    default 2 keeps each frame until the next comes, which on a still desktop is until something changes), a rare key
+    frame; FLV, which says where each frame ends ([Frames] makes the Annex-B)."""
     codec = "hevc_vaapi" if args.codec == "hevc" else "h264_vaapi"
-    return ["-vf", "format=nv12,hwupload", "-c:v", codec, "-rc_mode", "CBR", "-b:v", args.bitrate,
+    return ["-vf", "format=nv12,hwupload", "-c:v", codec, "-rc_mode", "VBR", "-b:v", args.bitrate,
             "-maxrate", args.bitrate, "-bf", "0", "-g", str(args.fps * KEY_EVERY_S), "-async_depth", "1",
             "-f", "flv", "-"]
 
@@ -203,15 +204,18 @@ def encoder_command(args, screen, w, h):
 
 def capture_command(args, output, w, h):
     """wf-recorder on `output`, in FLV like ffmpeg. It records a frame only when the output changes (Hyprland draws
-    nothing new on a still one, -r or -D whatever), so [Frames.idle] covers the silences."""
+    nothing new on a still one, -r or -D whatever), so [Frames.idle] covers the silences.
+
+    No -r: it adds ffmpeg's fps filter, which keeps each frame until the next one comes and then sends the repeats
+    that fill the gap all at once, a few seconds of them after a pause. settb gives the encoder the stream's frame
+    rate to share the bitrate by (wf-recorder's own time base is 1 µs, a million frames a second to the encoder);
+    frames closer than that share a timestamp, which FLV takes and the Station doesn't read."""
     codec = "hevc_vaapi" if args.codec == "hevc" else "h264_vaapi"
-    rec = ["wf-recorder", "-y", "-o", output, "-r", str(args.fps), "-c", codec, "-d", args.device,
-           "-p", "rc_mode=CBR", "-p", f"b={args.bitrate}", "-p", "bf=0", "-p", f"g={args.fps * KEY_EVERY_S}",
-           "-p", "async_depth=1", "-m", "flv", "-f", "/dev/stdout"]
-    if args.mirror is not None:
-        # A monitor you have, scaled on the GPU to the stream's size: wf-recorder's own VA-API filter, sized.
-        rec[1:1] = ["-F", f"scale_vaapi=w={w}:h={h}:format=nv12:out_range=full"]
-    return rec
+    # wf-recorder's own VA-API filter, sized to the stream for a monitor you have (scaled on the GPU).
+    scale = f"w={w}:h={h}:" if args.mirror is not None else ""
+    return ["wf-recorder", "-y", "-o", output, "-F", f"settb=1/{args.fps},scale_vaapi={scale}format=nv12:out_range=full",
+            "-c", codec, "-d", args.device, "-p", "rc_mode=VBR", "-p", f"b={args.bitrate}", "-p", f"maxrate={args.bitrate}",
+            "-p", "bf=0", "-p", f"g={args.fps * KEY_EVERY_S}", "-p", "async_depth=1", "-m", "flv", "-f", "/dev/stdout"]
 
 
 START = b"\x00\x00\x00\x01"
