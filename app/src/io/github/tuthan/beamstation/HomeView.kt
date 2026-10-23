@@ -341,6 +341,14 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
             status.invalidate()
         }
     }
+    /** Rokid: the glasses back on USB after a wake, or plugged in or out: the drawer's 2D/3D and AR Mode follow. */
+    private val glassesEvents = object : BroadcastReceiver() {
+        override fun onReceive(c: Context?, i: Intent?) {
+            if (!Rokid.glassesEvent(i)) return
+            handler.removeCallbacks(reloadSoon)
+            handler.postDelayed(reloadSoon, 1_500)   // rokid_display hears of them from the same broadcast
+        }
+    }
     private var okDown = false
     private var backDown = false
 
@@ -521,6 +529,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         if (Power.available()) {
             battery = Power.battery(Ui.register(context, batteryEvents, IntentFilter(Intent.ACTION_BATTERY_CHANGED)))
         }
+        if (Rokid.available()) Ui.register(context, glassesEvents, Rokid.glassesFilter())
         handler.postDelayed(tick, 15_000)
         checkNotices()
         checkBattery()
@@ -551,6 +560,7 @@ internal class HomeView(a: Activity) : ViewGroup(a), Choreographer.FrameCallback
         recs.removeListener(this)
         tvInputs?.unregisterCallback(inputCallback)
         if (Power.available()) context.unregisterReceiver(batteryEvents)
+        if (Rokid.available()) context.unregisterReceiver(glassesEvents)
     }
 
     fun destroy() {

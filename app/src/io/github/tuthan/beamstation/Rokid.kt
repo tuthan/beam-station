@@ -2,6 +2,9 @@ package io.github.tuthan.beamstation
 
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
+import android.hardware.usb.UsbDevice
+import android.hardware.usb.UsbManager
 import android.os.IBinder
 import android.os.Parcel
 import android.os.SystemClock
@@ -33,6 +36,8 @@ internal object Rokid {
     private const val SET_FPS = 15
     private const val SET_SCENE = 16
     private const val GET_SCENE = 17
+    /** Rokid's USB vendor id: the glasses' own USB (sensors and audio), there while they are. */
+    private const val GLASSES_VENDOR = 0x04D2
     /** Display modes as getAirDisplayMode reports them; 3 is 2D at 120 Hz, which is what setting 120 Hz reads back as. */
     const val MODE_2D = 0
     const val MODE_3D = 1
@@ -73,6 +78,24 @@ internal object Rokid {
 
     @JvmStatic
     fun available() = HomeMode.ROKID
+
+    /** The USB events glassesEvent reads. */
+    @JvmStatic
+    fun glassesFilter() = IntentFilter(UsbManager.ACTION_USB_DEVICE_ATTACHED).apply {
+        addAction(UsbManager.ACTION_USB_DEVICE_DETACHED)
+    }
+
+    /**
+     * True when the glasses came onto USB or left it. Waking the box takes them off USB for about five seconds (the
+     * HDMI link retrains), so a read made as the home screen comes back finds no glasses: their return is when to read
+     * again.
+     */
+    @JvmStatic
+    fun glassesEvent(i: Intent?): Boolean {
+        @Suppress("DEPRECATION")
+        val d: UsbDevice? = i?.getParcelableExtra(UsbManager.EXTRA_DEVICE)
+        return d?.vendorId == GLASSES_VENDOR
+    }
 
     /** The glasses' settings now, or null when no glasses are plugged in or the service can't be reached. */
     @JvmStatic
