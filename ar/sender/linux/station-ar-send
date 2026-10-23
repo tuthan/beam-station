@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import re
+import select
 import shutil
 import signal
 import socket
@@ -168,13 +169,21 @@ def size(text):
     return int(m.group(1)), int(m.group(2))
 
 
+# A key frame every 30 s: TCP loses nothing, every connection starts with one, and each is ~10x a frame, a hitch
+# on a slow link (every 2 s, it was).
+KEY_EVERY_S = 30
+# No frame for this long (a still desktop): a keepalive, well inside the Station's 5 s.
+IDLE_S = 1.0
+
+
 def encoder_args(args):
-    """ffmpeg output options: VA-API, constant bitrate, no B-frames, a key frame every 2 s, a delimiter per frame."""
+    """ffmpeg output options: VA-API, constant bitrate, no B-frames, one frame in flight in the encoder (the default 2
+    keeps each frame until the next comes, which on a still desktop is until something changes), a rare key frame;
+    FLV, which says where each frame ends ([Frames] makes the Annex-B)."""
     codec = "hevc_vaapi" if args.codec == "hevc" else "h264_vaapi"
-    bsf = "hevc_metadata=aud=insert" if args.codec == "hevc" else "h264_metadata=aud=insert"
-    fmt = "hevc" if args.codec == "hevc" else "h264"
     return ["-vf", "format=nv12,hwupload", "-c:v", codec, "-rc_mode", "CBR", "-b:v", args.bitrate,
-            "-maxrate", args.bitrate, "-bf", "0", "-g", str(args.fps * 2), "-bsf:v", bsf, "-f", fmt, "-"]
+            "-maxrate", args.bitrate, "-bf", "0", "-g", str(args.fps * KEY_EVERY_S), "-async_depth", "1",
+            "-f", "flv", "-"]
 
 
 def encoder_command(args, screen, w, h):
@@ -188,29 +197,145 @@ def encoder_command(args, screen, w, h):
     if args.source == "file":
         return base + ["-re", "-stream_loop", "-1", "-i", args.file, "-an",
                        "-vf", f"scale={w}:{h},format=nv12,hwupload"] + encoder_args(args)[2:]
-    # wf-recorder: a Hyprland headless output, captured at a constant frame rate, piped through ffmpeg for the
-    # delimiters.
+    # wf-recorder: [capture_command].
     return None
 
 
-def capture_pipeline(args, output, w, h):
-    """wf-recorder on `output` into ffmpeg (copy + delimiters): two processes, the second's stdout is the stream."""
+def capture_command(args, output, w, h):
+    """wf-recorder on `output`, in FLV like ffmpeg. It records a frame only when the output changes (Hyprland draws
+    nothing new on a still one, -r or -D whatever), so [Frames.idle] covers the silences."""
     codec = "hevc_vaapi" if args.codec == "hevc" else "h264_vaapi"
-    fmt = "hevc" if args.codec == "hevc" else "h264"
     rec = ["wf-recorder", "-y", "-o", output, "-r", str(args.fps), "-c", codec, "-d", args.device,
-           "-p", "rc_mode=CBR", "-p", f"b={args.bitrate}", "-p", "bf=0", "-p", f"g={args.fps * 2}",
-           "-m", fmt, "-f", "/dev/stdout"]
+           "-p", "rc_mode=CBR", "-p", f"b={args.bitrate}", "-p", "bf=0", "-p", f"g={args.fps * KEY_EVERY_S}",
+           "-p", "async_depth=1", "-m", "flv", "-f", "/dev/stdout"]
     if args.mirror is not None:
         # A monitor you have, scaled on the GPU to the stream's size: wf-recorder's own VA-API filter, sized.
         rec[1:1] = ["-F", f"scale_vaapi=w={w}:h={h}:format=nv12:out_range=full"]
-    fix = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-nostdin", "-f", fmt, "-i", "-", "-c", "copy",
-           "-bsf:v", ("hevc_metadata=aud=insert" if fmt == "hevc" else "h264_metadata=aud=insert"), "-f", fmt, "-"]
-    return rec, fix
+    return rec
+
+
+START = b"\x00\x00\x00\x01"
+
+
+class Frames:
+    """The encoder's FLV, cut into frames and written as the Annex-B the Station reads (it cuts access units at their
+    delimiters). Each frame goes as soon as the encoder has it, followed at once by the next frame's delimiter: the
+    Station finishes a frame on that delimiter, and without it the last frame of a change (your last keystroke)
+    would wait for the next change. A still desktop sends no frames at all, so [idle] gives an SEI the decoder
+    ignores (user data, inside the next frame's access unit, before its picture): the Station ends a stream silent
+    for 5 s."""
+
+    def __init__(self, codec):
+        self.hevc = codec == "hevc"
+        # Access-unit delimiter, any picture type: HEVC type 35, AVC type 9.
+        self.aud = START + (b"\x46\x01\x50" if self.hevc else b"\x09\xf0")
+        # user_data_unregistered (payload type 5, 16 bytes: a UUID with no zero byte), as a prefix SEI (HEVC 39, AVC 6).
+        self.keepalive = START + (b"\x4e\x01" if self.hevc else b"\x06") + b"\x05\x10" + b"StationAR-keepal" + b"\x80"
+        self.buf = bytearray()
+        self.header = False
+        self.length_size = 4
+        self.params = b""
+        self.started = False
+
+    def nal_type(self, nal):
+        return (nal[0] >> 1) & 0x3F if self.hevc else nal[0] & 0x1F
+
+    def feed(self, data):
+        """What to send for this much of the encoder's output: whole frames, or nothing yet."""
+        self.buf += data
+        out = bytearray()
+        if not self.header:
+            if len(self.buf) < 9:
+                return out
+            if self.buf[:3] != b"FLV":
+                raise ValueError("the encoder's output isn't FLV")
+            skip = int.from_bytes(self.buf[5:9], "big") + 4  # the header, then PreviousTagSize0
+            if len(self.buf) < skip:
+                return out
+            del self.buf[:skip]
+            self.header = True
+        # Tags: type, 3-byte size, timestamp and stream id (11 bytes), the body, then the tag's own size (4).
+        while len(self.buf) >= 11:
+            size = int.from_bytes(self.buf[1:4], "big")
+            if len(self.buf) < 11 + size + 4:
+                break
+            kind, body = self.buf[0], bytes(self.buf[11:11 + size])
+            del self.buf[:11 + size + 4]
+            if kind == 9 and len(body) > 5:
+                out += self.video(body)
+        return out
+
+    def idle(self):
+        return self.keepalive
+
+    def video(self, body):
+        if body[0] & 0x80:
+            # Enhanced FLV (HEVC, newer AVC): the packet type in the low bits, then a FourCC.
+            kind, data = body[0] & 0x0F, body[5:]
+            if kind == 0:
+                self.config(data)
+                return b""
+            if kind == 1:
+                data = data[3:]  # a composition time first
+            elif kind != 3:
+                return b""  # sequence end, metadata
+            key = (body[0] >> 4) & 7 == 1
+        else:
+            # Classic FLV AVC: AVCPacketType, a composition time.
+            if body[1] == 0:
+                self.config(body[5:])
+                return b""
+            if body[1] != 1:
+                return b""
+            data, key = body[5:], body[0] >> 4 == 1
+        nals, i, n = [], 0, self.length_size
+        while i + n <= len(data):
+            size = int.from_bytes(data[i:i + n], "big")
+            nal = data[i + n:i + n + size]
+            if nal and self.nal_type(nal) != (35 if self.hevc else 9):
+                nals.append(nal)
+            i += n + size
+        if not nals:
+            return b""
+        frame = bytearray()
+        if not self.started:
+            frame += self.aud  # every later frame's went out right after the one before
+            self.started = True
+        if key and not any(self.nal_type(x) in ((32, 33, 34) if self.hevc else (7, 8)) for x in nals):
+            frame += self.params
+        for nal in nals:
+            frame += START + nal
+        return frame + self.aud
+
+    def config(self, c):
+        """The decoder configuration record (hvcC or avcC): the NAL length size and the parameter sets."""
+        sets = []
+        if self.hevc:
+            self.length_size = (c[21] & 3) + 1
+            i = 23
+            for _ in range(c[22]):
+                count = int.from_bytes(c[i + 1:i + 3], "big")
+                i += 3
+                for _ in range(count):
+                    n = int.from_bytes(c[i:i + 2], "big")
+                    sets.append(c[i + 2:i + 2 + n])
+                    i += 2 + n
+        else:
+            self.length_size = (c[4] & 3) + 1
+            i = 5
+            for count_at_low_bits in (True, False):
+                count = c[i] & 0x1F if count_at_low_bits else c[i]
+                i += 1
+                for _ in range(count):
+                    n = int.from_bytes(c[i:i + 2], "big")
+                    sets.append(c[i + 2:i + 2 + n])
+                    i += 2 + n
+        self.params = b"".join(START + s for s in sets)
 
 
 class Encoder:
-    """The picture for one screen, as an Annex-B byte stream on stdout. Restarted for every connection, so the
-    Station gets a key frame at once."""
+    """The picture for one screen, as FLV on stdout ([Frames] makes it Annex-B). Restarted for every connection, so
+    the Station gets a key frame at once."""
 
     def __init__(self, args, screen, w, h, output=None):
         self.args, self.screen, self.w, self.h, self.output = args, screen, w, h, output
@@ -221,11 +346,9 @@ class Encoder:
         if self.output:
             # wf-recorder keeps the monitor's geometry from its start: [moved] tells when that went stale.
             self.geometry = monitor_geometry(self.output)
-            rec, fix = capture_pipeline(self.args, self.output, self.w, self.h)
-            p1 = subprocess.Popen(rec, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, start_new_session=True)
-            p2 = subprocess.Popen(fix, stdin=p1.stdout, stdout=subprocess.PIPE, start_new_session=True)
-            p1.stdout.close()
-            self.procs = [p1, p2]
+            rec = capture_command(self.args, self.output, self.w, self.h)
+            self.procs = [subprocess.Popen(rec, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                           start_new_session=True)]
         else:
             cmd = encoder_command(self.args, self.screen, self.w, self.h)
             self.procs = [subprocess.Popen(cmd, stdout=subprocess.PIPE, start_new_session=True)]
@@ -249,6 +372,9 @@ class Encoder:
         for p in self.procs:
             if p.poll() is None:
                 p.terminate()
+            # Nobody reads its output now: a recorder blocked on a full pipe ends only once that write fails.
+            if p.stdout:
+                p.stdout.close()
         for p in self.procs:
             try:
                 p.wait(timeout=2)
@@ -408,21 +534,31 @@ def stream(args, host, port, entry, fp_pinned, screen, w, h, output=None):
                 continue
             log(f"screen {screen}: streaming {w}x{h}@{args.fps} {args.codec} to {host}")
             delay = 0.5
-            out = enc.start()
+            out = enc.start().fileno()
+            frames = Frames(args.codec)
             sent = 0
             since = time.monotonic()
             s.settimeout(10)
             while not stopping.is_set():
-                chunk = os.read(out.fileno(), 65536)
+                if not select.select([out], [], [], IDLE_S)[0]:
+                    s.sendall(frames.idle())
+                    continue
+                chunk = os.read(out, 65536)
                 if not chunk:
                     log(f"screen {screen}: the encoder stopped")
                     break
-                s.sendall(chunk)
-                sent += len(chunk)
+                data = frames.feed(chunk)
+                if data:
+                    s.sendall(data)
+                    sent += len(data)
                 now = time.monotonic()
                 if args.verbose and now - since >= 10:
                     log(f"screen {screen}: {sent * 8 / (now - since) / 1e6:.1f} Mbit/s")
                     sent, since = 0, now
+        except ValueError as e:
+            log(f"screen {screen}: {e}")
+            stopping.set()
+            return
         except (OSError, ConnectionError) as e:
             if not stopping.is_set():
                 log(f"screen {screen}: connection lost ({e}); reconnecting")

@@ -64,13 +64,24 @@ port and token. `forget <address>` or `forget all` removes them here.
 
 ## Encoding
 
-`hevc_vaapi`, constant bitrate (15 Mbit/s by default), no B-frames, a key frame every 2 s, an access-unit delimiter
-before every frame. The encoder restarts on each connection, so the Station gets a key frame at once.
+`hevc_vaapi`, constant bitrate (15 Mbit/s by default), no B-frames, `async_depth=1`, a key frame every 30 s, an
+access-unit delimiter before every frame. The encoder restarts on each connection, so the Station gets a key frame at
+once; TCP loses nothing, so more key frames would only be hitches on a slow link (each is ~10x a frame).
+
+The encoder writes FLV, which says where each frame ends, and the script makes the Annex-B the Station reads: each
+frame goes out whole as soon as the encoder has it, followed at once by the next frame's delimiter, since the Station
+cuts a frame at the delimiter after it. wf-recorder records only when the screen changes (Hyprland draws nothing new
+on a still output, whatever `-r` or `-D` say), so after 1 s without a frame the script sends a user-data SEI the
+decoder ignores; the Station ends a stream silent for 5 s.
+
+Why: three stages each held the newest frame until the next one came, which on a desktop means until the next change
+(the last keystroke shown only when the cursor blinked): the encoder at its default `async_depth=2`, the ffmpeg that
+used to insert the delimiters (it parses raw HEVC, so a frame ends where the next begins), and the Station's cutter.
+And a still desktop went silent, so the Station dropped the stream every 10–40 s and it took seconds to come back.
 
 - `--source test` and `--source file`: one ffmpeg per screen, `-re` (real time).
-- `--source wf-recorder`: `wf-recorder -o STATIONAR-n -r <fps> -c hevc_vaapi` (a constant frame rate, so the
-  Station can tell a dead connection from a still desktop), piped through `ffmpeg -c copy` to insert the delimiters.
-  wf-recorder's VA-API path tags the picture full range, which the Station shows right. `--mirror` adds
+- `--source wf-recorder`: `wf-recorder -o STATIONAR-n -r <fps> -c hevc_vaapi -m flv`. wf-recorder's VA-API path tags
+  the picture full range, which the Station shows right. `--mirror` adds
   `-F scale_vaapi=w=W:h=H:format=nv12:out_range=full`.
 
 ## Status (2026-10-22)
