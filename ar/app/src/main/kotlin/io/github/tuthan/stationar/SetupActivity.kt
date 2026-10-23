@@ -18,7 +18,6 @@ import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
 import io.github.tuthan.stationar.adb.AdbClient
-import io.github.tuthan.stationar.apps.AppScreens
 import io.github.tuthan.stationar.core.pose.AxisCalibration
 import io.github.tuthan.stationar.core.pose.HeadPose
 import io.github.tuthan.stationar.glasses.GlassesSession
@@ -51,11 +50,8 @@ class SetupActivity : Activity() {
         super.onCreate(savedInstanceState)
         sensors = SensorSource(getSystemService(SensorManager::class.java))
         val glasses = GlassesSession(this)
-        // A crash in AR may have left the glasses at AR's refresh rate, or the key filter switched on.
-        work.execute {
-            glasses.restoreLeftover()
-            AppScreens.cleanLeftover(this)
-        }
+        // A crash in AR may have left the glasses at AR's refresh rate.
+        work.execute { glasses.restoreLeftover() }
         setContentView(build())
     }
 

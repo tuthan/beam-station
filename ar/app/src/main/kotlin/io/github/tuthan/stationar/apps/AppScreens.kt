@@ -10,14 +10,11 @@ import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import io.github.tuthan.stationar.AppLog
 import io.github.tuthan.stationar.StationAr
-import io.github.tuthan.stationar.adb.AdbClient
 import io.github.tuthan.stationar.core.compat.AppCompat
 import io.github.tuthan.stationar.core.helper.Command
 import io.github.tuthan.stationar.core.helper.TaskInfo
 import io.github.tuthan.stationar.core.keys.KeyFilter
 import io.github.tuthan.stationar.helper.Helper
-import io.github.tuthan.stationar.keys.KeyFilterSetting
-import io.github.tuthan.stationar.keys.KeyRouter
 import io.github.tuthan.stationar.sources.VirtualDisplaySource
 import java.io.IOException
 import java.util.concurrent.ConcurrentHashMap
@@ -30,7 +27,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * which follows your gaze. When you settle on an app's screen, the helper moves the focus to its display and the
  * remote drives the app; on any other screen the focus is back on AR (display 0). The Station stamps its buttons' keys
  * for the glasses' display whatever has the focus, so they reach AR's window ([onKey]) and are passed on to the app
- * through the helper; the key filter keeps Menu, held OK and held Back for AR meanwhile.
+ * through the helper; the [KeyFilter] keeps Menu, held OK and held Back for AR meanwhile.
  *
  * Main thread, except where noted; helper calls run on one worker.
  */
@@ -54,7 +51,6 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     @Volatile private var focusedDisplay = 0
     /** AR's own panel is open: the focus stays on AR whatever you look at. */
     private var holding = false
-    private var filterOn = false
 
     /** The glasses' display, which every app screen copies. */
     private val size by lazy { VirtualDisplaySource.glassesSize(context) }
@@ -223,7 +219,7 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         main.post { filter.live = display != 0 }
     }
 
-    // MARK: - The helper and the key filter (worker)
+    // MARK: - The helper (worker)
 
     private fun ensureHelper(): Boolean {
         if (helper.running) return true
@@ -235,39 +231,26 @@ class AppScreens(private val context: Context, private val listener: Listener) :
             status("App screens need the Station's USB debugging: ${e.message}")
             return false
         }
-        setFilter(true)
-        main.post { KeyRouter.handler = keyHandler }
         return true
     }
 
-    private fun setFilter(on: Boolean) {
-        if (filterOn == on) return
-        try {
-            AdbClient.connect(context, 60_000, null).use { KeyFilterSetting.set(it, on) }
-            filterOn = on
-            AppLog.i("keys: filter " + if (on) "on" else "off")
-        } catch (e: Exception) {
-            AppLog.w("keys: couldn't turn the filter " + if (on) "on" else "off", e)
-        }
-    }
-
-    // MARK: - Keys (main thread, from KeyFilterService)
+    // MARK: - Keys (main thread, from AR's window)
 
     /**
      * A key that reached AR's own window while an app has the remote (the Station sends its buttons' keys to the
      * glasses' display, whichever display has the focus): true when it was taken here, for the app or for AR.
      */
-    fun onKey(e: KeyEvent): Boolean = filter.live && keyHandler.onKey(e)
-
-    private val keyHandler = KeyRouter.Handler { e ->
-        if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return@Handler false
-        if (filter.live && !helper.running) {
-            // The helper is gone: a short OK or Back couldn't be sent on, so every key goes to the app as it is.
-            AppLog.w("keys: the helper is gone; the remote stays with the app")
+    fun onKey(e: KeyEvent): Boolean {
+        if (!filter.live) return false
+        if (e.action != KeyEvent.ACTION_DOWN && e.action != KeyEvent.ACTION_UP) return false
+        if (!helper.running) {
+            // The helper is gone: nothing can be passed on to the app, so AR takes the remote back.
+            AppLog.w("keys: the helper is gone; the remote stays with AR")
             filter.live = false
+            return false
         }
         val injected = e.deviceId == KeyCharacterMap.VIRTUAL_KEYBOARD
-        apply(filter.onKey(e.keyCode, e.action == KeyEvent.ACTION_DOWN, e.repeatCount, e.eventTime, injected))
+        return apply(filter.onKey(e.keyCode, e.action == KeyEvent.ACTION_DOWN, e.repeatCount, e.eventTime, injected))
     }
 
     private val timeout = Runnable { apply(filter.onTimeout(SystemClock.uptimeMillis())) }
@@ -311,12 +294,11 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     // MARK: - The end
 
     /**
-     * Leaving AR: closes every app's task, releases the displays, takes the key filter out and stops the helper. Safe
-     * to call twice, and from any thread; the work runs on the worker.
+     * Leaving AR: closes every app's task, releases the displays and stops the helper. Safe to call twice, and from any
+     * thread; the work runs on the worker.
      */
     fun close() {
         if (!closed.compareAndSet(false, true)) return
-        KeyRouter.handler = null
         main.post {
             filter.live = false
             main.removeCallbacks(timeout)
@@ -329,7 +311,6 @@ class AppScreens(private val context: Context, private val listener: Listener) :
             }
             if (helper.running) helper.call(Command.Focus(0, 1, 1))
             helper.stop()
-            setFilter(false)
         }
         work.shutdown()
     }
@@ -337,17 +318,6 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     companion object {
         private const val FOCUS_TRIES = 6
         private const val FOCUS_RETRY_MS = 300L
-
-        /** A key filter entry left by a crash: taken out at the next start (worker thread; needs the ADB key). */
-        fun cleanLeftover(c: Context) {
-            if (!KeyFilterSetting.isOn(c)) return
-            try {
-                AdbClient.connect(c, 10_000, null).use { KeyFilterSetting.set(it, false) }
-                AppLog.i("keys: removed a filter entry left from before")
-            } catch (e: Exception) {
-                AppLog.w("keys: couldn't remove the leftover filter entry", e)
-            }
-        }
 
         /** Apps a TV launcher lists: (package, label), without Station AR and Station Home. */
         fun launchable(c: Context): List<Pair<String, String>> {

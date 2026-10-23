@@ -45,9 +45,11 @@ card. It's a separate app from Station Home (the home screen at the top of this 
 - **Input on Android 11** (Phase 00, 2026-10-22): there is one focused display, and an untrusted virtual display
   gets the remote's keys only once it is on top, which `setFocusedTask` doesn't do but a touch on it does. Focus
   follows the gaze through the helper: a touch-down and cancel on the screen you look at (nothing is clicked). **No
-  key is ever injected at a display that isn't the focused one** (Android drops it). The reserved keys (held OK,
-  held Back, Menu) go through `keys.KeyFilterService`, added to `enabled_accessibility_services` only while AR is
-  open, keeping every other entry; outside an AR session it passes every key on at once.
+  key is ever injected at a display that isn't the focused one** (Android drops it). The Station stamps its own
+  buttons' keys for display 0 whatever has the focus (2026-10-22), so they always reach `ArActivity`: while an app has
+  the remote, `AppScreens.onKey` runs them through `core.keys.KeyFilter` (held OK, held Back and Menu stay with AR) and
+  the helper passes the rest on to the focused display. No accessibility service: one never received a key here, and
+  Station AR leaves `enabled_accessibility_services` alone.
 - **Laptop streams are always TLS 1.3** with a pinned certificate (`AndroidKeyStore`); pairing needs the PIN shown
   in AR. There is no plaintext mode.
 - Ported code (`AdbClient`, `RokidDisplay`) keeps the MIT notice; see `docs/notices.md`.
