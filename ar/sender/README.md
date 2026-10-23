@@ -25,7 +25,7 @@ Open AR on the Station first: the receiver is only there while AR is open.
 sender/linux/station-ar-send discover              # Stations with AR open: address, key, paired or not
 sender/linux/station-ar-send pair 192.168.199.98   # once: check the key, type the PIN shown in the glasses
 sender/linux/station-ar-send run                   # one 1920x1080@60 monitor
-sender/linux/station-ar-send run --monitors 2      # two, side by side in AR
+sender/linux/station-ar-send run --monitors 2      # two from the start (AR's "+ Laptop screen" adds more later)
 sender/linux/station-ar-send run --wide            # one 3840x1080 monitor, shown as two screens
 sender/linux/station-ar-send run --workspace 2     # a new monitor, with workspace 2's windows moved onto it
 sender/linux/station-ar-send run --mirror          # no new monitor: the one you're on, as it is
@@ -42,6 +42,13 @@ at most 1080 lines (`--size`'s height) and keeping its shape: a 3440x1440 ultraw
 screen in AR takes that 21:9 shape. The glasses have 1920 pixels across, so a big monitor's text comes out small:
 mirroring suits a laptop panel, a film or a talk better than a day of work.
 
+**More screens from the glasses.** While `run` runs, *+ Laptop screen* in AR's panel (Layout row) asks it for
+another monitor: it makes `STATIONAR-1` (then `-2`, three at most) at `--size`, and AR puts its screen beside the
+ones you have. Closing that screen in AR (hold Back, *Close*), or choosing a layout without it, removes the monitor
+again, and Hyprland moves its windows to your other monitors. This works with `--mirror` too: the mirrored monitor
+stays the first screen, the added ones are new monitors. Not with `--wide`. AR's *Desk* is one laptop screen; *Desk + app* is one
+with an app screen to its right.
+
 `discover` asks the mDNS group and reads the answers on UDP 5353, which ufw's default rules let in. If it still
 finds nothing (another firewall, or a network that drops multicast), give the Station's address instead: every
 command takes one.
@@ -49,8 +56,8 @@ command takes one.
 Options for `run`: `--size 2560x1440`, `--fps 60`, `--codec hevc|avc` (AVC can't do `--wide` on the Station),
 `--bitrate 15M`, `--device /dev/dri/renderD128`, `-v` (bitrate every 10 s).
 
-`run` makes a Hyprland headless output per monitor (`STATIONAR-0`, `STATIONAR-1`, or `STATIONAR-WIDE`), to the right
-of your monitors at scale 1, and removes it when it exits, Ctrl-C included. Move windows onto it as onto any monitor.
+`run` makes a Hyprland headless output per monitor (`STATIONAR-0` to `-2`, or `STATIONAR-WIDE`), to the right of
+your monitors at scale 1, and removes it when it exits, Ctrl-C included. Move windows onto it as onto any monitor.
 It waits for Hyprland to finish placing the output before recording it, and records it again whenever it moves or
 changes size (a display plugged in, Omarchy renumbering workspaces): wf-recorder keeps an output's geometry from its
 start, and a stale one slides the picture down the screen in AR. If the network drops, it reconnects (every 0.5 to

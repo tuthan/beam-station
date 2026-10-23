@@ -2,7 +2,7 @@
 """station-ar-send: your laptop's extra monitors, streamed to Station AR on the Rokid Station.
 
   station-ar-send pair [HOST]          pair this laptop once (type the PIN shown in the glasses)
-  station-ar-send run [HOST] [options] stream: one or two new monitors, one wide one, or --mirror one you have
+  station-ar-send run [HOST] [options] stream: new monitors (more as AR asks), one wide one, or --mirror one you have
   station-ar-send discover             find Stations with AR open on the LAN (mDNS)
   station-ar-send forget [HOST|all]    forget a pairing
 
@@ -34,6 +34,8 @@ HOSTS = os.path.join(CONFIG, "hosts")
 SERVICE = "_stationar._tcp.local."
 DEVICE = "/dev/dri/renderD128"
 MAX_LINE = 256
+# Laptop monitors the Station shows at once: screens 0 to 2.
+MAX_SCREENS = 3
 
 stopping = threading.Event()
 encoders = []
@@ -101,6 +103,28 @@ def read_line(s):
         out += b
         if len(out) > MAX_LINE:
             raise ConnectionError("the Station sent a line too long")
+
+
+def station_lines(s, buf):
+    """The lines the Station sent while streaming (MORE, GONE), read without waiting: `s` was readable, but that may
+    be TLS's own records and no line yet. `buf` keeps a part line for the next call."""
+    s.setblocking(False)
+    try:
+        while True:
+            try:
+                data = s.recv(4096)
+            except (ssl.SSLWantReadError, BlockingIOError):
+                break
+            if not data:
+                raise ConnectionError("the Station closed the connection")
+            buf += data
+    finally:
+        s.settimeout(10)
+    *lines, rest = bytes(buf).split(b"\n")
+    if len(rest) > MAX_LINE:
+        raise ConnectionError("the Station sent a line too long")
+    buf[:] = rest
+    return [line.decode("ascii", "replace").strip() for line in lines]
 
 
 def short(fp):
@@ -455,14 +479,17 @@ def move_window(address, ws):
 
 
 class Headless:
-    """Extra monitors that exist only for the Station: made on start, removed on exit (Ctrl-C too)."""
+    """Extra monitors that exist only for the Station: made on start or when AR asks for one, removed when you close
+    their screen in AR and on exit (Ctrl-C too)."""
 
     def __init__(self):
         self.made = []
+        self.lock = threading.Lock()
 
     def create(self, name, w, h, fps, x):
         subprocess.run(["hyprctl", "output", "create", "headless", name], check=True, capture_output=True)
-        self.made.append(name)
+        with self.lock:
+            self.made.append(name)
         # Scale 1, out of the way of the real monitors. With a Lua config (Hyprland 0.56 on) `keyword` refuses, exit
         # status 0 all the same, so its answer is read and `eval` does it there.
         rule = subprocess.run(["hyprctl", "keyword", "monitor", f"{name},{w}x{h}@{fps},{x}x0,1"],
@@ -492,18 +519,27 @@ class Headless:
             time.sleep(0.1)
         return last
 
+    def remove(self, name):
+        """Removes one; Hyprland moves its windows to the monitors left."""
+        with self.lock:
+            if name not in self.made:
+                return
+            self.made.remove(name)
+        subprocess.run(["hyprctl", "output", "remove", name], capture_output=True)
+        log(f"monitor {name} removed")
+
     def remove_all(self):
-        for name in reversed(self.made):
-            subprocess.run(["hyprctl", "output", "remove", name], capture_output=True)
-            log(f"monitor {name} removed")
-        self.made = []
+        for name in reversed(list(self.made)):
+            self.remove(name)
 
 
 # MARK: - run
 
 
-def stream(args, host, port, entry, fp_pinned, screen, w, h, output=None):
-    """One screen: connect, say HELLO, copy the encoder's stream; on any failure, back off and do it again."""
+def stream(args, host, port, entry, fp_pinned, screen, w, h, output=None, more=None):
+    """One screen: connect, say HELLO, copy the encoder's stream; on any failure, back off and do it again. While it
+    streams, the Station may say MORE (you asked for another screen in AR: `more` makes it) or GONE (you closed this
+    one). True when it's gone for good: a screen after the first, whose monitor the caller removes."""
     delay = 0.5
     enc = Encoder(args, screen, w, h, output)
     encoders.append(enc)
@@ -526,7 +562,8 @@ def stream(args, host, port, entry, fp_pinned, screen, w, h, output=None):
             send_line(s, f"STATIONAR {VERSION} HELLO {entry['token']} {screen} {w} {h} {args.fps} {args.codec}")
             reply = read_line(s)
             if reply != "OK":
-                wait = {"BUSY": 5, "CLOSED": 5}.get(reply)
+                # CLOSED soon again: "+ Laptop screen" in AR brings a screen you put away back on the next try.
+                wait = {"BUSY": 5, "CLOSED": 2}.get(reply)
                 if wait is None:
                     log(f"screen {screen}: the Station said {reply}: "
                         + {"DENIED": "this laptop isn't paired any more (station-ar-send pair)",
@@ -540,12 +577,28 @@ def stream(args, host, port, entry, fp_pinned, screen, w, h, output=None):
             delay = 0.5
             out = enc.start().fileno()
             frames = Frames(args.codec)
+            said = bytearray()
             sent = 0
             since = time.monotonic()
             s.settimeout(10)
             while not stopping.is_set():
-                if not select.select([out], [], [], IDLE_S)[0]:
+                ready = select.select([out, s], [], [], IDLE_S)[0]
+                if not ready:
                     s.sendall(frames.idle())
+                    continue
+                if s in ready:
+                    lines = station_lines(s, said)
+                    if "MORE" in lines and more:
+                        # Making a monitor takes a few seconds: this screen keeps streaming meanwhile.
+                        threading.Thread(target=more, daemon=True).start()
+                    if "GONE" in lines:
+                        if screen in ("0", "wide"):
+                            log(f"screen {screen}: closed in AR; it comes back when a layout there shows it")
+                            break
+                        log(f"screen {screen}: closed in AR; its monitor goes")
+                        encoders.remove(enc)
+                        return True
+                if out not in ready:
                     continue
                 chunk = os.read(out, 65536)
                 if not chunk:
@@ -599,7 +652,7 @@ def cmd_run(args):
         return 2
     if args.mirror is not None and (args.source != "wf-recorder" or args.wide or args.monitors != 1
                                     or args.workspace is not None):
-        print("--mirror shows one monitor you have: not with --source, --wide, --monitors 2 or --workspace",
+        print("--mirror shows one monitor you have: not with --source, --wide, --monitors or --workspace",
               file=sys.stderr)
         return 2
     if args.workspace is not None and args.source != "wf-recorder":
@@ -637,6 +690,43 @@ def cmd_run(args):
         return 2
 
     headless = Headless()
+    running = {}  # screen -> the thread streaming it
+    lock = threading.Lock()  # running, and monitors made after the start
+
+    def start_screen(screen, sw, sh, x):
+        """A screen's stream on its own thread: the monitor you mirror, a new headless one, or the test source."""
+        output = None
+        if mirrored and screen == "0":
+            output = mirrored[0]
+        elif args.source == "wf-recorder":
+            output = f"STATIONAR-{screen.upper()}"
+            headless.create(output, sw, sh, args.fps, x)
+
+        def run_screen():
+            # Closed in AR for good (a screen after the first): its monitor goes, and its windows to the others.
+            if stream(args, host, port, entry, fp_pinned, screen, sw, sh, output, more) and output:
+                headless.remove(output)
+
+        t = threading.Thread(target=run_screen, daemon=True)
+        running[screen] = t
+        t.start()
+
+    def more():
+        """AR asked for another screen ("+ Laptop screen"): the next free number, a new monitor of --size."""
+        if args.wide:
+            log("AR asked for another screen: not with --wide")
+            return
+        with lock:
+            if stopping.is_set():
+                return
+            free = next((str(i) for i in range(MAX_SCREENS)
+                         if str(i) not in running or not running[str(i)].is_alive()), None)
+            if free is None:
+                log(f"AR asked for another screen: there are {MAX_SCREENS} already")
+                return
+            log(f"screen {free}: AR asked for it")
+            aw, ah = args.size
+            start_screen(free, aw, ah, 10000 + int(free) * aw)
 
     def on_signal(signum, frame):
         stopping.set()
@@ -644,20 +734,11 @@ def cmd_run(args):
     signal.signal(signal.SIGINT, on_signal)
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGHUP, on_signal)
-    threads = []
     moved = []
     try:
-        for i, (screen, sw, sh) in enumerate(screens):
-            output = None
-            if mirrored:
-                output = mirrored[0]
-            elif args.source == "wf-recorder":
-                output = f"STATIONAR-{screen.upper()}"
-                headless.create(output, sw, sh, args.fps, 10000 + i * sw)
-            t = threading.Thread(target=stream, args=(args, host, port, entry, fp_pinned, screen, sw, sh, output),
-                                 daemon=True)
-            t.start()
-            threads.append(t)
+        with lock:
+            for i, (screen, sw, sh) in enumerate(screens):
+                start_screen(screen, sw, sh, 10000 + i * sw)
         if args.workspace is not None:
             # The windows, not the workspace: Omarchy renumbers a workspace moved to another monitor into that
             # monitor's block (1 becomes 31), and monitor tools add rules of their own. Windows go back by address.
@@ -669,22 +750,27 @@ def cmd_run(args):
                 moved = [a for a in windows if move_window(a, there)]
                 log(f"workspace {args.workspace}: {len(moved)} of {len(windows)} windows onto {headless.made[0]} "
                     f"(its workspace {there}); back on exit")
-        while not stopping.is_set() and any(t.is_alive() for t in threads):
+        while not stopping.is_set():
+            with lock:
+                if not any(t.is_alive() for t in running.values()):
+                    break
             stopping.wait(1.0)
-            for enc in encoders:
+            for enc in list(encoders):
                 if enc.moved():
                     log(f"monitor {enc.output} moved or changed size: capturing it again")
                     enc.restart()
     finally:
         stopping.set()
-        for t in threads:
+        for t in list(running.values()):
             t.join(timeout=5)
         if moved:
             # Those still open; a window closed meanwhile is simply not there.
             still = {c["address"] for c in hyprctl_json("clients")}
             back = [a for a in moved if a in still and move_window(a, args.workspace)]
             log(f"{len(back)} windows back on workspace {args.workspace}")
-        headless.remove_all()
+        # Under the lock: a monitor AR asked for just now is either made already, and goes, or not made at all.
+        with lock:
+            headless.remove_all()
     return 0
 
 
@@ -856,7 +942,8 @@ def main(argv=None):
     pr.add_argument("--source", choices=["wf-recorder", "test", "file"], default="wf-recorder",
                     help="real monitors (Hyprland headless outputs), a test pattern, or a video file")
     pr.add_argument("--file", help="the video for --source file")
-    pr.add_argument("--monitors", type=int, choices=[1, 2], default=1)
+    pr.add_argument("--monitors", type=int, choices=range(1, MAX_SCREENS + 1), default=1,
+                    help="new monitors at the start (AR's \"+ Laptop screen\" adds more while it runs)")
     pr.add_argument("--wide", action="store_true", help="one stream twice as wide, shown as two screens")
     pr.add_argument("--mirror", nargs="?", const="", metavar="OUTPUT",
                     help="show a monitor you have (default: the focused one) instead of adding one")
