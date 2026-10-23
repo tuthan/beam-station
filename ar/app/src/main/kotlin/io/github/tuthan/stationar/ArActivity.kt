@@ -150,8 +150,18 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             return Layout(mutableListOf(ScreenSpec("laptop:0", 0f, 0f, Presets.ONE_TO_ONE)))
         }
         val preset = if (asked != null && (asked in Presets.NAMES || asked == Presets.LAST)) asked else settings.startPreset
-        return (if (preset == Presets.LAST) settings.lastLayout else Presets.layout(preset)) ?: Presets.welcome()
+        val l = (if (preset == Presets.LAST) settings.lastLayout else Presets.layout(preset)) ?: Presets.welcome()
+        // An app that can't be in a screen (full-screen only, or not installed any more) isn't opened with the layout:
+        // one that hands you to another app would end AR each time it opened.
+        l.screens.removeAll { it.kind == "app" && !fitsScreen(it.source.removePrefix("app:")) }
+        return if (l.screens.isEmpty()) Presets.welcome() else l
     }
+
+    private fun fitsScreen(pkg: String) = AppCompat.inScreen(pkg) && launchIntent(pkg) != null
+
+    /** The intent a TV launcher would open `pkg` with. */
+    private fun launchIntent(pkg: String): Intent? =
+        packageManager.getLeanbackLaunchIntentForPackage(pkg) ?: packageManager.getLaunchIntentForPackage(pkg)
 
     /** Station Home's AR Mode while AR is open already: a preset or an app it asks for. */
     override fun onNewIntent(intent: Intent) {
@@ -264,6 +274,9 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         AppLog.i("AR: leaving")
         glView.queueEvent {
             val last = renderer.currentLayout()
+            // A screen whose app closed or handed you to another app isn't opened again next time.
+            last.screens.removeAll { it.kind == "app" && apps.appClosed(it.source) }
+            if (last.screens.isEmpty()) last.screens.addAll(Presets.welcome().screens)
             // After onDestroy the worker is gone: saved here then.
             if (!background { settings.lastLayout = last }) settings.lastLayout = last
             renderer.release()
@@ -616,7 +629,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 AppCompat.Status.WORKS -> "works"
                 AppCompat.Status.UNTESTED -> "not tried"
                 AppCompat.Status.PARTLY -> "partly"
-                AppCompat.Status.NO_VIDEO, AppCompat.Status.DRM -> "full-screen only"
+                AppCompat.Status.NO_VIDEO, AppCompat.Status.DRM -> "opens full screen"
             }
             PanelLayout.Item("app:$pkg", label, detail)
         }
@@ -723,13 +736,20 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         }
     }
 
-    /** Opens an app in a screen where you look (or says why not). */
+    /** Opens an app in a screen where you look; one that only plays full screen opens so, and AR leaves for it. */
     private fun openApp(pkg: String) {
         val compat = AppCompat.of(pkg)
         val label = StationAr.appName(this, pkg)
-        if (compat.status == AppCompat.Status.DRM || compat.status == AppCompat.Status.NO_VIDEO) {
-            panelHeader = "$label: ${compat.note}"
-            drawPanel()
+        if (!AppCompat.inScreen(pkg)) {
+            val intent = launchIntent(pkg)
+            if (intent == null) {
+                panelHeader = "$label: ${compat.note}"
+                drawPanel()
+                return
+            }
+            AppLog.i("AR: $pkg plays full screen only; opening it so")
+            startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            leave()
             return
         }
         if (layout.screens.count { it.kind == "app" } >= MAX_APP_SCREENS && layout.indexOf("app:$pkg") < 0) {

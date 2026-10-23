@@ -15,6 +15,8 @@ object AppCompat {
         "com.liskovsoft.smarttubetv.beta" to Entry(Status.PARTLY, "Video showed, then stopped to buffer after the move"),
         "com.teamsmart.videomanager.tv" to Entry(Status.PARTLY, "Video showed, then stopped to buffer after the move"),
         "com.google.android.youtube.tv" to Entry(Status.NO_VIDEO, "Video is solid green in a screen: play it full-screen"),
+        // Seen 2026-10-23: it opens YouTube at a youtube.com link and closes; YouTube lands on the glasses' display.
+        "com.google.android.youtube.tvmusic" to Entry(Status.NO_VIDEO, "Opens YouTube, which plays full-screen only"),
         "com.netflix.ninja" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
         "com.disney.disneyplus" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
         "com.amazon.amazonvideo.livingroom" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
@@ -27,6 +29,9 @@ object AppCompat {
     private val UNKNOWN = Entry(Status.UNTESTED, "Not tried in a screen yet")
 
     fun of(pkg: String): Entry = KNOWN[pkg] ?: UNKNOWN
+
+    /** Whether `pkg` goes in a screen at all; the others open full screen. */
+    fun inScreen(pkg: String): Boolean = of(pkg).status.let { it != Status.NO_VIDEO && it != Status.DRM }
 
     /** The picker's order: what works first, then untried, then partly, then the ones that only play full-screen. */
     fun rank(pkg: String): Int = when (of(pkg).status) {

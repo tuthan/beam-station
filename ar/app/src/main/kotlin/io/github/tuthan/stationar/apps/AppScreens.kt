@@ -89,7 +89,9 @@ class AppScreens(private val context: Context, private val listener: Listener) :
             var other: TaskInfo? = null
             if (!closed.get() && helper.running) {
                 val screens = sources.values.filter { it.displayId >= 0 }.associateBy { it.name.removePrefix("app:") }
-                val tasks = if (screens.isEmpty()) emptyList() else TaskInfo.decodeAll(helper.call(Command.Tasks) ?: "")
+                val reply = if (screens.isEmpty()) null else helper.call(Command.Tasks)
+                val tasks = TaskInfo.decodeAll(reply ?: "")
+                val filled = HashSet<VirtualDisplaySource>()
                 for (t in tasks) {
                     val src = screens[t.pkg] ?: continue
                     if (t.display != 0) continue
@@ -97,7 +99,15 @@ class AppScreens(private val context: Context, private val listener: Listener) :
                     AppLog.i("${src.name}: its task ${t.id} opened on the glasses' display; moved into its screen")
                     // Its app had closed there: this is its app now.
                     if (src.appClosed) opened(src, t.id)
+                    filled.add(src)
                     moved = true
+                }
+                // A screen left empty: its app handed you to another one (YouTube Music opens YouTube) or closed. It
+                // counts as closed, so the layout AR saves doesn't open it again (and end AR again, each time).
+                if (reply != null) {
+                    for (src in screens.values) {
+                        if (src.task >= 0 && src !in filled && tasks.none { it.display == src.displayId }) markClosed(src)
+                    }
                 }
                 // Root tasks come top first: the first one left showing on display 0 covers AR.
                 val top = tasks.firstOrNull { it.display == 0 && it.visible && it.pkg !in screens }
@@ -124,9 +134,7 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     /** Whether AR offers to show `pkg`'s task in a screen: an app with a launcher entry that works in one. */
     private fun offerable(pkg: String): Boolean {
         if (pkg == context.packageName || pkg == homePackage || pkg == "android" || pkg == "com.android.systemui") return false
-        val status = AppCompat.of(pkg).status
-        if (status == AppCompat.Status.DRM || status == AppCompat.Status.NO_VIDEO) return false
-        return launchComponent(pkg) != null
+        return AppCompat.inScreen(pkg) && launchComponent(pkg) != null
     }
 
     // MARK: - Watching full screen
@@ -285,13 +293,17 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         var any = false
         for (src in open) {
             if (tasks.any { it.display == src.displayId }) continue
-            AppLog.i("${src.name}: its app closed in its screen")
-            src.task = -1
-            src.appClosed = true
-            src.note = CLOSED_NOTE
+            markClosed(src)
             any = true
         }
         if (any) focusNow()
+    }
+
+    private fun markClosed(src: VirtualDisplaySource) {
+        AppLog.i("${src.name}: its app closed in its screen")
+        src.task = -1
+        src.appClosed = true
+        src.note = CLOSED_NOTE
     }
 
     private val lookForClosed = Runnable { background { checkClosed() } }

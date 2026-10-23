@@ -5,6 +5,7 @@ import io.github.tuthan.stationar.core.scene.Presets
 import io.github.tuthan.stationar.core.scene.ScreenSpec
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -17,9 +18,21 @@ class AppCompatTest {
         assertEquals(AppCompat.Status.PARTLY, AppCompat.of("com.liskovsoft.smarttubetv.beta").status)
         assertEquals(AppCompat.Status.DRM, AppCompat.of("com.netflix.ninja").status)
         assertEquals(AppCompat.Status.UNTESTED, AppCompat.of("com.example.whatever").status)
+        // YouTube Music hands off to YouTube.
+        assertEquals(AppCompat.Status.NO_VIDEO, AppCompat.of("com.google.android.youtube.tvmusic").status)
         val sorted = listOf("com.netflix.ninja", "com.example.x", "org.videolan.vlc", "com.google.android.youtube.tv")
             .sortedBy { AppCompat.rank(it) }
         assertEquals(listOf("org.videolan.vlc", "com.example.x", "com.google.android.youtube.tv", "com.netflix.ninja"), sorted)
+    }
+
+    @Test
+    fun fullScreenOnlyAppsDontGoInAScreen() {
+        assertTrue(AppCompat.inScreen("org.videolan.vlc"))
+        assertTrue(AppCompat.inScreen("com.example.whatever"))
+        assertTrue(AppCompat.inScreen("com.liskovsoft.smarttubetv"))
+        assertFalse(AppCompat.inScreen("com.google.android.youtube.tv"))
+        assertFalse(AppCompat.inScreen("com.google.android.youtube.tvmusic"))
+        assertFalse(AppCompat.inScreen("com.netflix.ninja"))
     }
 
     @Test
