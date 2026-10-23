@@ -291,21 +291,35 @@ def mirror_size(mw, mh, height):
     return max(64, int(mw * s) // 16 * 16), max(64, int(mh * s) // 2 * 2)
 
 
-def workspace_monitor(ws):
-    """The monitor workspace `ws` is on, or None when it doesn't exist (Hyprland drops an empty one)."""
+def hyprctl_json(what):
     try:
-        out = subprocess.run(["hyprctl", "-j", "workspaces"], capture_output=True, text=True, timeout=3).stdout
-        return next((w["monitor"] for w in json.loads(out) if w.get("id") == ws), None)
-    except (OSError, ValueError, KeyError, subprocess.SubprocessError):
-        return None
+        return json.loads(subprocess.run(["hyprctl", "-j", what], capture_output=True, text=True, timeout=3).stdout)
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return []
 
 
-def move_workspace(ws, monitor):
-    """Moves workspace `ws` onto `monitor`; True if Hyprland did. A Lua config (0.56 on) takes `eval`; the older one
-    the dispatcher. Both answer "ok" only when it moved, with exit status 0 either way."""
-    lua = f'hl.dispatch(hl.dsp.workspace.move({{ workspace = "{ws}", monitor = "{monitor}" }}))'
-    for cmd in (["hyprctl", "eval", lua], ["hyprctl", "dispatch", "moveworkspacetomonitor", str(ws), monitor]):
-        if subprocess.run(cmd, capture_output=True, text=True).stdout.strip() == "ok":
+def workspace_windows(ws):
+    """The addresses of the windows on workspace `ws`."""
+    return [c["address"] for c in hyprctl_json("clients") if c.get("workspace", {}).get("id") == ws]
+
+
+def shown_workspace(monitor):
+    """The workspace `monitor` shows, or None."""
+    return next((m["activeWorkspace"]["id"] for m in hyprctl_json("monitors") if m.get("name") == monitor), None)
+
+
+def window_workspace(address):
+    return next((c["workspace"]["id"] for c in hyprctl_json("clients") if c.get("address") == address), None)
+
+
+def move_window(address, ws):
+    """Moves a window onto workspace `ws` without following it; True if it's there after. A Lua config (0.56 on)
+    takes `eval`, the older one the dispatcher. Neither answer says the window moved (Lua says "ok" even for a window
+    that doesn't exist), so where it is is read back."""
+    lua = f'hl.dispatch(hl.dsp.window.move({{ workspace = "{ws}", window = "address:{address}", follow = false }}))'
+    for cmd in (["hyprctl", "eval", lua], ["hyprctl", "dispatch", "movetoworkspacesilent", f"{ws},address:{address}"]):
+        subprocess.run(cmd, capture_output=True, text=True)
+        if window_workspace(address) == ws:
             return True
     return False
 
@@ -491,7 +505,7 @@ def cmd_run(args):
     signal.signal(signal.SIGTERM, on_signal)
     signal.signal(signal.SIGHUP, on_signal)
     threads = []
-    home = None
+    moved = []
     try:
         for i, (screen, sw, sh) in enumerate(screens):
             output = None
@@ -505,15 +519,16 @@ def cmd_run(args):
             t.start()
             threads.append(t)
         if args.workspace is not None:
-            # Your windows on the Station's monitor; back where they were on exit.
-            home = workspace_monitor(args.workspace)
-            if home is None:
-                log(f"workspace {args.workspace} doesn't exist (Hyprland keeps none without windows); nothing moved")
-            elif move_workspace(args.workspace, headless.made[0]):
-                log(f"workspace {args.workspace} moved from {home} to {headless.made[0]}")
+            # The windows, not the workspace: Omarchy renumbers a workspace moved to another monitor into that
+            # monitor's block (1 becomes 31), and monitor tools add rules of their own. Windows go back by address.
+            there = shown_workspace(headless.made[0])
+            windows = workspace_windows(args.workspace)
+            if there is None or not windows:
+                log(f"workspace {args.workspace} has no windows; nothing moved")
             else:
-                log(f"Hyprland didn't move workspace {args.workspace}")
-                home = None
+                moved = [a for a in windows if move_window(a, there)]
+                log(f"workspace {args.workspace}: {len(moved)} of {len(windows)} windows onto {headless.made[0]} "
+                    f"(its workspace {there}); back on exit")
         while not stopping.is_set() and any(t.is_alive() for t in threads):
             stopping.wait(1.0)
             for enc in encoders:
@@ -524,8 +539,11 @@ def cmd_run(args):
         stopping.set()
         for t in threads:
             t.join(timeout=5)
-        if home is not None and move_workspace(args.workspace, home):
-            log(f"workspace {args.workspace} back on {home}")
+        if moved:
+            # Those still open; a window closed meanwhile is simply not there.
+            still = {c["address"] for c in hyprctl_json("clients")}
+            back = [a for a in moved if a in still and move_window(a, args.workspace)]
+            log(f"{len(back)} windows back on workspace {args.workspace}")
         headless.remove_all()
     return 0
 
@@ -703,7 +721,7 @@ def main(argv=None):
     pr.add_argument("--mirror", nargs="?", const="", metavar="OUTPUT",
                     help="show a monitor you have (default: the focused one) instead of adding one")
     pr.add_argument("--workspace", type=int, metavar="N",
-                    help="move workspace N onto the Station's monitor while streaming, back on exit")
+                    help="move workspace N's windows onto the Station's monitor while streaming, back on exit")
     pr.add_argument("--size", type=size, default=(1920, 1080),
                     help="each monitor's size (default 1920x1080); with --mirror only the height counts")
     pr.add_argument("--fps", type=int, default=60)

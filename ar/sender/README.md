@@ -27,15 +27,17 @@ sender/linux/station-ar-send pair 192.168.199.98   # once: check the key, type t
 sender/linux/station-ar-send run                   # one 1920x1080@60 monitor
 sender/linux/station-ar-send run --monitors 2      # two, side by side in AR
 sender/linux/station-ar-send run --wide            # one 3840x1080 monitor, shown as two screens
-sender/linux/station-ar-send run --workspace 2     # a new monitor, with your workspace 2 moved onto it
+sender/linux/station-ar-send run --workspace 2     # a new monitor, with workspace 2's windows moved onto it
 sender/linux/station-ar-send run --mirror          # no new monitor: the one you're on, as it is
 sender/linux/station-ar-send run --mirror DP-1     # a named one (hyprctl monitors lists them)
 sender/linux/station-ar-send run --source test     # a test pattern with the laptop's clock and a frame counter
 ```
 
 **Extend or mirror.** By default you get a new monitor that only the glasses show, sharp at 1:1 (one laptop pixel per
-glasses pixel in *Desk*). `--workspace N` moves workspace N (Hyprland's number, `hyprctl workspaces`) onto it while
-streaming and back where it was on exit. `--mirror` shows a monitor you already have instead, scaled on the GPU to
+glasses pixel in *Desk*). `--workspace N` moves workspace N's windows (Hyprland's number, `hyprctl workspaces`) onto
+the workspace it shows while streaming, and those windows back to N on exit. Windows, not the workspace: Omarchy
+renumbers a workspace moved to another monitor into that monitor's block (1 becomes 31), and a monitor tool such as
+hyprmoncfg may add workspace rules of its own. `--mirror` shows a monitor you already have instead, scaled on the GPU to
 at most 1080 lines (`--size`'s height) and keeping its shape: a 3440x1440 ultrawide streams as 2576x1080, and the
 screen in AR takes that 21:9 shape. The glasses have 1920 pixels across, so a big monitor's text comes out small:
 mirroring suits a laptop panel, a film or a talk better than a day of work.
