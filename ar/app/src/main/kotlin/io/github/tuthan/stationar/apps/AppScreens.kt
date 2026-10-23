@@ -38,6 +38,9 @@ class AppScreens(private val context: Context, private val listener: Listener) :
 
         /** A reserved key, kept from the app. Main thread. */
         fun onKeyAction(action: KeyFilter.Action)
+
+        /** The remote went to an app's screen (`toApp`) or back to AR. Main thread. */
+        fun onRemote(toApp: Boolean)
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -370,7 +373,10 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         }
         focusedDisplay = display
         AppLog.i("keys: the remote drives display $display")
-        main.post { filter.live = display != 0 }
+        main.post {
+            filter.live = display != 0
+            if (!closed.get()) listener.onRemote(display != 0)
+        }
     }
 
     // MARK: - The helper (worker)

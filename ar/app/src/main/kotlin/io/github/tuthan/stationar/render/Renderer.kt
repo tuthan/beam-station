@@ -323,7 +323,7 @@ class Renderer(
         val icon = slot.source?.icon
         // With an icon, the lines move down under it.
         val y = if (icon != null) 330f else 250f
-        if (icon != null) c.drawBitmap(icon, null, RectF(420f, 150f, 540f, 270f), paint)
+        if (icon != null) c.drawBitmap(icon, null, RectF(420f, 150f, 540f, 270f), Paint(Paint.FILTER_BITMAP_FLAG))
         c.drawText(slot.source?.label ?: slot.spec.source, 480f, y, paint)
         paint.textSize = 28f
         paint.color = Color.rgb(150, 180, 195)

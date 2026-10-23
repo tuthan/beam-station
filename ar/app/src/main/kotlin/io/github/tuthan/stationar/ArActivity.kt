@@ -5,12 +5,14 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Bitmap
 import android.hardware.SensorManager
 import android.opengl.GLSurfaceView
 import android.os.BatteryManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.WindowManager
 import io.github.tuthan.stationar.apps.AppScreens
@@ -70,6 +72,14 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     private var panelHeader = ""
     private var calibration: Quat? = null
     private var calibrating = false
+    /** Calibration was offered this session (it asks once; the panel's *Calibrate* is there after). */
+    private var calibrationOffered = false
+
+    /** A passing HUD line (what the buttons do, how to leave), and whether the buttons' one was shown this session. */
+    private var hintLine: String? = null
+    private var remoteHinted = false
+    /** When Back last asked to leave AR (a second Back soon after leaves). */
+    private var backAt = 0L
 
     // The laptop receiver. Its sources outlive connections (and layouts) while AR is open.
     private val streams = ConcurrentHashMap<String, StreamSource>()
@@ -307,9 +317,18 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         main.post {
             this.tracking = tracking
             AppLog.i("AR: head tracking " + if (tracking) "on" else "off (no samples: the D-pad turns the view)")
-            if (tracking && settings.axes == null && !calibrating) startCalibration()
+            if (tracking && settings.axes == null && !calibrating && !calibrationOffered) {
+                calibrationOffered = true
+                startCalibration()
+            }
             updateHud()
         }
+    }
+
+    override fun onRemote(toApp: Boolean) {
+        if (!toApp || remoteHinted) return
+        remoteHinted = true
+        hint("Hold Back: screen menu  ·  Hold OK: re-centre", REMOTE_HINT_MS)
     }
 
     // MARK: - The laptop receiver
@@ -426,12 +445,27 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             }
             KeyEvent.KEYCODE_BACK -> {
                 if (event.isTracking && !event.isCanceled) {
-                    if (panelOpen) closePanel() else leave()
+                    if (panelOpen) closePanel() else backToLeave()
                 }
                 return true
             }
         }
         return super.onKeyUp(keyCode, event)
+    }
+
+    /**
+     * Back with nothing open leaves AR. With apps in screens or a laptop streaming, a stray Back (a glance away from an
+     * app, then Back meant for it) would close them all: it takes a second Back then.
+     */
+    private fun backToLeave() {
+        val busy = apps.count > 0 || streams.values.any { it.connected }
+        val now = SystemClock.uptimeMillis()
+        if (!busy || now - backAt < LEAVE_CONFIRM_MS) {
+            leave()
+            return
+        }
+        backAt = now
+        hint("Press Back again to leave AR", LEAVE_CONFIRM_MS)
     }
 
     private fun dpad(keyCode: Int) {
@@ -463,7 +497,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     private fun ok() {
         if (calibrating) {
-            calibrationStep()
+            if (panel.focusedItem()?.id == "calibrate-later") closePanel() else calibrationStep()
             return
         }
         if (panelOpen) {
@@ -523,6 +557,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             PanelLayout.Item("screen-left", "Move left"),
             PanelLayout.Item("screen-right", "Move right"),
             PanelLayout.Item("screen-close", "Close"),
+            // The Station's buttons have no Menu key: while an app has the remote, this is the way to AR's own panel.
+            PanelLayout.Item("ar-menu", "AR menu", "apps, layout"),
             PanelLayout.Item("screen-done", "Done"),
         )
         // A film in a screen costs the GPU a pass per frame; full screen it costs nothing, without head tracking.
@@ -540,7 +576,11 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         val rows = panel.rows
         val row = panel.row
         val col = panel.col
-        glView.queueEvent { renderer.showPanel({ it.draw(rows, row, col, header, emptyMap()) }) }
+        val icons = HashMap<String, Bitmap>()
+        for (r in rows) for (item in r.items) {
+            if (item.id.startsWith("app:")) StationAr.appIcon(this, item.id.removePrefix("app:"))?.let { icons[item.id] = it }
+        }
+        glView.queueEvent { renderer.showPanel({ it.draw(rows, row, col, header, icons) }) }
     }
 
     private fun panelSections(): List<Pair<String, List<PanelLayout.Item>>> {
@@ -652,6 +692,10 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 closePanel()
             }
             id == "screen-done" -> closePanel()
+            id == "ar-menu" -> {
+                menuScreen = -1
+                openPanel()
+            }
             id == "screen-reopen" -> {
                 val source = layout.screens.getOrNull(menuScreen)?.source
                 closePanel()
@@ -739,9 +783,14 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         calibrating = true
         calibration = null
         panelHeader = "Calibrate: look straight ahead, then press OK"
-        panel.set(listOf("" to listOf(PanelLayout.Item("calibrate-ok", "OK", "looking ahead"))))
+        panel.set(calibrationItems("looking ahead"))
+        panel.focus("calibrate-ok")
         showPanelNow()
     }
+
+    /** The calibration step's tiles: OK for the step, and Later (the panel's *Calibrate* is there for then). */
+    private fun calibrationItems(step: String) =
+        listOf("" to listOf(PanelLayout.Item("calibrate-ok", "OK", step), PanelLayout.Item("calibrate-later", "Later")))
 
     private fun calibrationStep() {
         val s = SensorSource.Sample().also { sensors.read(it) }
@@ -750,7 +799,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         if (ahead == null) {
             calibration = q
             panelHeader = "Now look up (about 30°), then press OK"
-            panel.set(listOf("" to listOf(PanelLayout.Item("calibrate-ok", "OK", "looking up"))))
+            panel.set(calibrationItems("looking up"))
             drawPanel()
             return
         }
@@ -758,7 +807,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         if (axes == null) {
             calibration = null
             panelHeader = "That didn't work: look straight ahead, then press OK"
-            panel.set(listOf("" to listOf(PanelLayout.Item("calibrate-ok", "OK", "try again"))))
+            panel.set(calibrationItems("try again"))
             drawPanel()
             return
         }
@@ -783,9 +832,26 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
 
     private val clock = SimpleDateFormat("HH:mm", Locale.getDefault())
 
+    /** Shows `text` on the HUD for `ms`, over everything but a pairing PIN. */
+    private fun hint(text: String, ms: Long) {
+        hintLine = text
+        main.removeCallbacks(clearHint)
+        main.postDelayed(clearHint, ms)
+        updateHud()
+    }
+
+    private val clearHint = Runnable {
+        hintLine = null
+        updateHud()
+    }
+
     private fun updateHud() {
         pairingLine?.let {
             glView.queueEvent { renderer.setHud(it, overPanel = true) }
+            return
+        }
+        hintLine?.let {
+            glView.queueEvent { renderer.setHud(it) }
             return
         }
         appLine?.let {
@@ -825,6 +891,9 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         private const val TURN_STEP = 5f
         private const val NUDGE_STEP = 5f
         private const val RECLAIM_WAIT_MS = 2000L
+        /** How long a second Back leaves AR after the first asked. */
+        private const val LEAVE_CONFIRM_MS = 3000L
+        private const val REMOTE_HINT_MS = 6000L
         // The framework's (hidden) extra on CLOSE_SYSTEM_DIALOGS, and its value for Home.
         private const val SYSTEM_DIALOG_REASON = "reason"
         private const val HOME_KEY = "homekey"

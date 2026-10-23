@@ -44,6 +44,17 @@ class PanelView {
         textSize = 34f
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
     }
+    private val footer = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(150, 180, 195)
+        textSize = 22f
+    }
+    private val more = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.rgb(253, 186, 116)
+        textSize = 22f
+        textAlign = Paint.Align.RIGHT
+    }
+    /** Icons are scaled down from 128 px: filtered, or they shimmer. */
+    private val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
     private val r = RectF()
     var texture = 0
         private set
@@ -54,11 +65,13 @@ class PanelView {
         canvas.drawRoundRect(r, 36f, 36f, back)
         canvas.drawText(header, PAD, 58f, heading)
         // Rows from the one that keeps the focused row in view.
-        val visible = ((H - TOP) / ROW_H).toInt()
+        val visible = ((H - TOP - FOOTER) / ROW_H).toInt()
         val first = (focusRow - visible + 1).coerceAtLeast(0)
         var y = TOP
+        var last = first - 1
         for (ri in first until rows.size) {
-            if (y + ROW_H > H) break
+            if (y + ROW_H > H - FOOTER) break
+            last = ri
             val row = rows[ri]
             row.title?.let { canvas.drawText(it, PAD, y + 26f, title) }
             val ty = y + 36f
@@ -72,17 +85,20 @@ class PanelView {
                 val icon = icons[item.id]
                 val cx = x + TILE_W / 2
                 if (icon != null) {
-                    val s = 52f
-                    r.set(cx - s / 2, ty + 12f, cx + s / 2, ty + 12f + s)
-                    canvas.drawBitmap(icon, null, r, null)
-                    drawFitted(item.label, cx, ty + TILE_H - 18f)
+                    val s = 44f
+                    r.set(cx - s / 2, ty + 10f, cx + s / 2, ty + 10f + s)
+                    canvas.drawBitmap(icon, null, r, iconPaint)
+                    drawFitted(item.label, cx, ty + 84f)
                 } else {
                     drawFitted(item.label, cx, ty + TILE_H / 2 + (if (item.detail.isEmpty()) 9f else -2f))
                 }
-                if (item.detail.isNotEmpty()) canvas.drawText(item.detail, cx, ty + TILE_H - (if (icon != null) 0f else 16f) - 2f, detail)
+                if (item.detail.isNotEmpty()) canvas.drawText(item.detail, cx, ty + (if (icon != null) 106f else TILE_H - 18f), detail)
             }
             y += ROW_H
         }
+        // What the buttons do here, and whether rows go on below.
+        canvas.drawText("OK  choose      Back  close      D-pad  move", PAD, H - 22f, footer)
+        if (last < rows.size - 1) canvas.drawText("more below", W - PAD, H - 22f, more)
         if (texture == 0) texture = Gl.texture2d(bitmap) else Gl.upload(texture, bitmap)
     }
 
@@ -100,9 +116,11 @@ class PanelView {
 
     companion object {
         const val W = 1280
-        const val H = 760
+        const val H = 800
         private const val PAD = 40f
         private const val TOP = 84f
+        /** The line at the bottom: the buttons, and "more below". */
+        private const val FOOTER = 44f
         private const val ROW_H = 168f
         private const val TILE_W = 186f
         private const val TILE_H = 118f
