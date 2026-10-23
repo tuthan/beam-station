@@ -36,6 +36,7 @@ DEVICE = "/dev/dri/renderD128"
 MAX_LINE = 256
 # Laptop monitors the Station shows at once: screens 0 to 2.
 MAX_SCREENS = 3
+DEFAULT_SIZE = (1920, 1080)
 
 stopping = threading.Event()
 encoders = []
@@ -134,8 +135,15 @@ def short(fp):
 
 
 def laptop_name():
-    name = re.sub(r"[^A-Za-z0-9 ._-]", "-", socket.gethostname())[:40]
-    return name or "laptop"
+    """The name to pair as: the hostname and 4 hex digits from this machine's ID (hashed for Station AR, so the ID
+    itself isn't sent). The Station keeps one pairing per name, and two laptops installed alike share a hostname."""
+    name = re.sub(r"[^A-Za-z0-9 ._-]", "-", socket.gethostname())[:35] or "laptop"
+    try:
+        with open("/etc/machine-id") as f:
+            mid = f.read().strip()
+    except OSError:
+        return name
+    return f"{name}-{hashlib.sha256(('station-ar ' + mid).encode()).hexdigest()[:4]}" if mid else name
 
 
 # MARK: - pair
@@ -150,7 +158,10 @@ def cmd_pair(args):
         if known and fp not in known:
             print(f"Warning: {host} had key {short(known[0])} when you paired; it now shows {short(fp)}.\n"
                   "Pairing again replaces it. If you didn't reset Station AR, stop here.", file=sys.stderr)
-        name = args.name or laptop_name()
+        # Pairing again: the name it had, so the Station replaces this laptop's old pairing, not keeps both.
+        name = args.name or next((hosts[k].get("name") for k in known if hosts[k].get("name")), None) or laptop_name()
+        print(f"Pairing as \"{name}\" (--name to choose). The Station keeps one pairing per name: a laptop paired "
+              "under it before stops working.")
         send_line(s, f"STATIONAR {VERSION} PAIR {name}")
         s.settimeout(130)
         reply = read_line(s)
@@ -725,7 +736,8 @@ def cmd_run(args):
                 log(f"AR asked for another screen: there are {MAX_SCREENS} already")
                 return
             log(f"screen {free}: AR asked for it")
-            aw, ah = args.size
+            # With --mirror, --size is the mirror's (its height only): a new monitor gets the usual size.
+            aw, ah = DEFAULT_SIZE if args.mirror is not None else args.size
             start_screen(free, aw, ah, 10000 + int(free) * aw)
 
     def on_signal(signum, frame):
@@ -949,7 +961,7 @@ def main(argv=None):
                     help="show a monitor you have (default: the focused one) instead of adding one")
     pr.add_argument("--workspace", type=int, metavar="N",
                     help="move workspace N's windows onto the Station's monitor while streaming, back on exit")
-    pr.add_argument("--size", type=size, default=(1920, 1080),
+    pr.add_argument("--size", type=size, default=DEFAULT_SIZE,
                     help="each monitor's size (default 1920x1080); with --mirror only the height counts")
     pr.add_argument("--fps", type=int, default=60)
     pr.add_argument("--codec", choices=["hevc", "avc"], default="hevc")

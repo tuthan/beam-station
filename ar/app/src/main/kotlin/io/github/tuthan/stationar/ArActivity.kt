@@ -27,6 +27,7 @@ import io.github.tuthan.stationar.core.scene.Presets
 import io.github.tuthan.stationar.core.scene.ScreenSpec
 import io.github.tuthan.stationar.core.store.Settings
 import io.github.tuthan.stationar.core.stream.Handshake
+import io.github.tuthan.stationar.core.stream.Pairing
 import io.github.tuthan.stationar.core.stream.ScreenOwners
 import io.github.tuthan.stationar.glasses.GlassesSession
 import io.github.tuthan.stationar.receiver.Advertiser
@@ -367,8 +368,14 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     }
 
     override fun onPairing(name: String, pin: String?) {
+        // The Station keeps one pairing per name: a second laptop with the same name would quietly unpair the first.
+        val replaces = pin != null && Pairing.safeKey(name) in StationAr.pairing(this).laptops()
         main.post {
-            pairingLine = if (pin == null) null else "Pair \"$name\": PIN $pin  ·  key ${Tls.shortKey(fingerprint)}"
+            pairingLine = when {
+                pin == null -> null
+                replaces -> "\"$name\" is paired already: this replaces it  ·  PIN $pin  ·  key ${Tls.shortKey(fingerprint)}"
+                else -> "Pair \"$name\": PIN $pin  ·  key ${Tls.shortKey(fingerprint)}"
+            }
             updateHud()
         }
     }

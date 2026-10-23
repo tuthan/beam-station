@@ -18,7 +18,7 @@ class Hud {
     private val back = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(200, 12, 18, 24) }
     private val text = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = Color.WHITE
-        textSize = 34f
+        textSize = TEXT_SIZE
         typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
         textAlign = Paint.Align.CENTER
     }
@@ -32,10 +32,13 @@ class Hud {
         shown = line
         bitmap.eraseColor(Color.TRANSPARENT)
         if (line.isNotEmpty()) {
+            // A long line (a pairing that replaces another) gets smaller rather than cut off at both ends.
+            text.textSize = TEXT_SIZE
+            while (text.measureText(line) > W - 64f && text.textSize > MIN_TEXT_SIZE) text.textSize -= 1f
             val w = (text.measureText(line) + 64f).coerceAtMost(W.toFloat())
             val r = RectF((W - w) / 2, 4f, (W + w) / 2, H - 4f)
             canvas.drawRoundRect(r, 30f, 30f, back)
-            canvas.drawText(line, W / 2f, H / 2f + 12f, text)
+            canvas.drawText(line, W / 2f, H / 2f + text.textSize * 0.35f, text)
         }
         if (texture == 0) texture = Gl.texture2d(bitmap) else Gl.upload(texture, bitmap)
     }
@@ -52,5 +55,7 @@ class Hud {
     companion object {
         const val W = 1024
         const val H = 72
+        private const val TEXT_SIZE = 34f
+        private const val MIN_TEXT_SIZE = 20f
     }
 }

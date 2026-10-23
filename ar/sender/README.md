@@ -42,12 +42,18 @@ at most 1080 lines (`--size`'s height) and keeping its shape: a 3440x1440 ultraw
 screen in AR takes that 21:9 shape. The glasses have 1920 pixels across, so a big monitor's text comes out small:
 mirroring suits a laptop panel, a film or a talk better than a day of work.
 
-**More screens from the glasses.** While `run` runs, *+ Laptop screen* in AR's panel (Layout row) asks it for
-another monitor: it makes `STATIONAR-1` (then `-2`, three at most) at `--size`, and AR puts its screen beside the
-ones you have. Closing that screen in AR (hold Back, *Close*), or choosing a layout without it, removes the monitor
+**More screens from the glasses.** While `run` runs, *+ Laptop screen* in AR's panel (Layout row, a tile per
+laptop) asks it for another monitor: it makes `STATIONAR-1` (then `-2`) at `--size`, and AR puts its screen beside
+the ones you have. Closing that screen in AR (hold Back, *Close*), or choosing a layout without it, removes the monitor
 again, and Hyprland moves its windows to your other monitors. This works with `--mirror` too: the mirrored monitor
-stays the first screen, the added ones are new monitors. Not with `--wide`. AR's *Desk* is one laptop screen; *Desk + app* is one
-with an app screen to its right.
+stays the first screen, the added ones are new 1920x1080 monitors. Not with `--wide`. AR's *Desk* is one laptop
+screen; *Desk + app* is one with an app screen to its right.
+
+**Two laptops.** Each pairs once, under its own name, and both can stream at once: the Station gives each laptop's
+monitors screens of their own (three laptop screens in all, from any laptops). `pair` names a laptop by its hostname
+and 4 hex digits from its machine ID (`hvo-omarchy-0955`), so two laptops installed alike don't share a name: the
+Station keeps one pairing per name, and pairing a name again unpairs the laptop that had it (the glasses say so
+while showing the PIN). Pairing again from the same laptop keeps the name it had; `--name` chooses one.
 
 `discover` asks the mDNS group and reads the answers on UDP 5353, which ufw's default rules let in. If it still
 finds nothing (another firewall, or a network that drops multicast), give the Station's address instead: every
