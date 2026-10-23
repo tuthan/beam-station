@@ -24,6 +24,25 @@ object Presets {
         else -> "Custom"
     }
 
+    /** What a preset's tile says under its name; the laptop ones say so when the laptop isn't streaming. */
+    fun detail(name: String, laptop: Boolean) = when (name) {
+        CINEMA -> "one big screen"
+        DESK -> if (laptop) "2 laptop screens" else "needs the laptop"
+        DESK_APP -> if (laptop) "laptop + app" else "needs the laptop"
+        else -> ""
+    }
+
+    /**
+     * What Cinema's one screen shows: the screen you look at (`focused`) if it's an app or a laptop that's streaming;
+     * else the first app screen of `screens`; else a streaming laptop; else the test card. Never a laptop that isn't
+     * there, which would only wait. `streaming`: the laptop sources connected now.
+     */
+    fun cinemaSource(focused: String?, screens: List<String>, streaming: Set<String>): String {
+        if (focused != null && (focused.startsWith("app:") || focused in streaming)) return focused
+        screens.firstOrNull { it.startsWith("app:") }?.let { return it }
+        return listOf("laptop:0", "laptop:1").firstOrNull { it in streaming } ?: ScreenSpec.CARD
+    }
+
     /**
      * The preset's screens. [first] is what the main screen shows (the test card until a laptop or an app is there);
      * [app] the app screen's source in Desk + app.

@@ -408,6 +408,9 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         stream(hello.source).play(hello, laptop, connection)
     }
 
+    /** The laptop sources streaming now. */
+    private fun streaming(): Set<String> = streams.filterValues { it.connected }.keys
+
     private fun shows(l: Layout, source: String) =
         if (source == "wide") l.screens.any { it.kind == "wide" } else l.indexOf(source) >= 0
 
@@ -599,7 +602,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     private fun panelSections(): List<Pair<String, List<PanelLayout.Item>>> {
         val layoutItems = ArrayList<PanelLayout.Item>()
         layoutItems.add(PanelLayout.Item("recentre", "Re-centre"))
-        for (name in Presets.NAMES) layoutItems.add(PanelLayout.Item("preset:$name", Presets.label(name)))
+        val laptop = streaming().isNotEmpty()
+        for (name in Presets.NAMES) layoutItems.add(PanelLayout.Item("preset:$name", Presets.label(name), Presets.detail(name, laptop)))
         val view = listOf(
             PanelLayout.Item("size-", "Smaller", percent(settings.size)),
             PanelLayout.Item("size+", "Bigger"),
@@ -644,11 +648,16 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 closePanel()
             }
             id.startsWith("preset:") -> {
-                // Cinema shows the laptop or app you look at, big; Desk + app keeps your app screen.
+                // Cinema shows what you look at, big, if it's there (an app, a streaming laptop); Desk + app keeps your
+                // app screen.
+                val name = id.removePrefix("preset:")
                 val focused = layout.screens.getOrNull(focusedIndex)?.source
-                val first = focused?.takeIf { it.startsWith("laptop:") || it.startsWith("app:") } ?: ScreenSpec.CARD
+                val first = Presets.cinemaSource(focused, layout.screens.map { it.source }, streaming())
                 val app = layout.screens.firstOrNull { it.kind == "app" }?.source ?: ScreenSpec.CARD
-                val l = Presets.layout(id.removePrefix("preset:"), first, app) ?: return
+                val l = Presets.layout(name, first, app) ?: return
+                if (name != Presets.CINEMA && streaming().isEmpty()) {
+                    hint("Desk shows the laptop's screens: run station-ar-send on it", LAPTOP_HINT_MS)
+                }
                 // A laptop streaming to a screen this preset doesn't have stays away until one does.
                 for (name in STREAMS) {
                     if (shows(l, name)) dismissed.remove(name) else if (streams[name]?.connected == true) dismissed.add(name)
@@ -914,6 +923,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         /** How long a second Back leaves AR after the first asked. */
         private const val LEAVE_CONFIRM_MS = 3000L
         private const val REMOTE_HINT_MS = 6000L
+        private const val LAPTOP_HINT_MS = 6000L
         // The framework's (hidden) extra on CLOSE_SYSTEM_DIALOGS, and its value for Home.
         private const val SYSTEM_DIALOG_REASON = "reason"
         private const val HOME_KEY = "homekey"

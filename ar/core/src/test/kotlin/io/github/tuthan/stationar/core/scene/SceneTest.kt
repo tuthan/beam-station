@@ -130,6 +130,23 @@ class SceneTest {
     }
 
     @Test
+    fun cinemaShowsSomethingThatsThere() {
+        val vlc = "app:org.videolan.vlc"
+        val desk = listOf("laptop:0", "laptop:1")
+        // What you look at, if it's an app or a streaming laptop.
+        assertEquals(vlc, Presets.cinemaSource(vlc, listOf("card", vlc), emptySet()))
+        assertEquals("laptop:1", Presets.cinemaSource("laptop:1", desk, setOf("laptop:1")))
+        // A laptop that isn't streaming only waits: the first app instead, else a laptop that streams, else the card.
+        assertEquals(vlc, Presets.cinemaSource("laptop:0", desk + vlc, emptySet()))
+        assertEquals("laptop:1", Presets.cinemaSource("laptop:0", desk, setOf("laptop:1")))
+        assertEquals(ScreenSpec.CARD, Presets.cinemaSource("laptop:0", desk, emptySet()))
+        assertEquals(ScreenSpec.CARD, Presets.cinemaSource(null, listOf("card"), emptySet()))
+        // The laptop presets say when they'd only wait.
+        assertEquals("needs the laptop", Presets.detail(Presets.DESK, laptop = false))
+        assertEquals("2 laptop screens", Presets.detail(Presets.DESK, laptop = true))
+    }
+
+    @Test
     fun aWideStreamsHalvesSplitOnePicture() {
         val l = ScreenSpec("wide:0")
         val r = ScreenSpec("wide:1")

@@ -334,7 +334,7 @@ class Renderer(
     }
 
     private fun waiting(spec: ScreenSpec) = when (spec.kind) {
-        "laptop", "wide" -> "Waiting for the laptop (station-ar-send)"
+        "laptop", "wide" -> "Laptop not connected: run station-ar-send on it"
         "app" -> "Opening…"
         else -> ""
     }
