@@ -2,13 +2,16 @@ package io.github.tuthan.stationar.apps
 
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import io.github.tuthan.stationar.AppLog
+import io.github.tuthan.stationar.StationAr
 import io.github.tuthan.stationar.adb.AdbClient
+import io.github.tuthan.stationar.core.compat.AppCompat
 import io.github.tuthan.stationar.core.helper.Command
 import io.github.tuthan.stationar.core.helper.TaskInfo
 import io.github.tuthan.stationar.core.keys.KeyFilter
@@ -57,20 +60,29 @@ class AppScreens(private val context: Context, private val listener: Listener) :
     private val size by lazy { VirtualDisplaySource.glassesSize(context) }
 
     /** The source for screen `name` (`app:<package>`), made once (GL thread, from the renderer). */
-    fun source(name: String): VirtualDisplaySource =
-        sources.getOrPut(name) { VirtualDisplaySource(name, context, this, size) }
+    fun source(name: String): VirtualDisplaySource {
+        StationAr.appName(context, name.removePrefix("app:"))
+        return sources.getOrPut(name) { VirtualDisplaySource(name, context, this, size) }
+    }
 
     /** App screens that exist now. */
     val count: Int get() = sources.values.count { it.displayId >= 0 }
 
+    /** Tasks to move into the next screen made for their app (by screen name), instead of starting the app there. */
+    private val adopting = ConcurrentHashMap<String, Int>()
+
     /**
-     * AR was covered while app screens are up. An app in a screen may have opened an activity of its own on the
-     * glasses' display: VLC starts its player from its service, as a new task, and Android puts that on display 0.
-     * Such tasks are moved into their app's screen (worker); `done(moved)` then runs on the main thread.
+     * AR was covered while app screens are up (worker; `done(moved, other)` then runs on the main thread). An app in a
+     * screen may have opened an activity of its own on the glasses' display: VLC starts its player from its service, as
+     * a new task, and Android puts that on display 0. Such tasks are moved into their app's screen (`moved`). Another
+     * app on top of display 0 that could show in a screen (an AirPlay receiver's player, say) is `other`: AR is brought
+     * back to ask. Either way AR is brought back to the front; the home screen on top of display 0 is neither, and AR
+     * ends.
      */
-    fun reclaim(done: (Boolean) -> Unit) {
+    fun reclaim(done: (Boolean, TaskInfo?) -> Unit) {
         val queued = background {
             var moved = false
+            var other: TaskInfo? = null
             if (!closed.get() && helper.running) {
                 val screens = sources.values.filter { it.displayId >= 0 }.associateBy { it.name.removePrefix("app:") }
                 val tasks = if (screens.isEmpty()) emptyList() else TaskInfo.decodeAll(helper.call(Command.Tasks) ?: "")
@@ -81,15 +93,40 @@ class AppScreens(private val context: Context, private val listener: Listener) :
                     AppLog.i("${src.name}: its task ${t.id} opened on the glasses' display; moved into its screen")
                     moved = true
                 }
-                if (moved) {
+                // Root tasks come top first: the first one left showing on display 0 covers AR.
+                val top = tasks.firstOrNull { it.display == 0 && it.visible && it.pkg !in screens }
+                if (top != null && offerable(top.pkg)) {
+                    AppLog.i("apps: ${top.pkg} (task ${top.id}) opened over AR")
+                    other = top
+                }
+                if (moved || other != null) {
                     helper.call(Command.Front)
                     focusedDisplay = -1
                     focusNow()
                 }
             }
-            main.post { done(moved) }
+            main.post { done(moved, other) }
         }
-        if (!queued) done(false)
+        if (!queued) done(false, null)
+    }
+
+    /** The next screen made for `pkg` takes its task `task` from the glasses' display, instead of starting the app. */
+    fun adopt(pkg: String, task: Int) {
+        adopting["app:$pkg"] = task
+    }
+
+    /** Whether AR offers to show `pkg`'s task in a screen: an app with a launcher entry that works in one. */
+    private fun offerable(pkg: String): Boolean {
+        if (pkg == context.packageName || pkg == homePackage || pkg == "android" || pkg == "com.android.systemui") return false
+        val status = AppCompat.of(pkg).status
+        if (status == AppCompat.Status.DRM || status == AppCompat.Status.NO_VIDEO) return false
+        return launchComponent(pkg) != null
+    }
+
+    private val homePackage: String? by lazy {
+        context.packageManager.resolveActivity(
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME), PackageManager.MATCH_DEFAULT_ONLY,
+        )?.activityInfo?.packageName
     }
 
     // MARK: - Displays (GL thread)
@@ -101,14 +138,26 @@ class AppScreens(private val context: Context, private val listener: Listener) :
             if (!ensureHelper()) return@background
             // The screen went while the helper started: nothing to open.
             if (source.displayId < 0) return@background
+            val adopted = adopting.remove(source.name)
+            if (adopted != null) {
+                if (helper.call(Command.MoveTask(adopted, displayId)) == null) {
+                    status("${StationAr.appName(context, pkg)} couldn't move into its screen")
+                    return@background
+                }
+                source.task = adopted
+                AppLog.i("${source.name}: task $adopted moved into display $displayId")
+                status(null)
+                if (wanted == source.name) focusNow()
+                return@background
+            }
             val component = launchComponent(pkg)
             if (component == null) {
-                status("${label(pkg)} has no TV screen to open")
+                status("${StationAr.appName(context, pkg)} has no TV screen to open")
                 return@background
             }
             val reply = helper.call(Command.Launch(displayId, component))
             if (reply == null) {
-                status("${label(pkg)} didn't open in its screen")
+                status("${StationAr.appName(context, pkg)} didn't open in its screen")
                 return@background
             }
             source.task = reply.trim().toIntOrNull() ?: -1
@@ -247,12 +296,6 @@ class AppScreens(private val context: Context, private val listener: Listener) :
         val pm = context.packageManager
         val intent = pm.getLeanbackLaunchIntentForPackage(pkg) ?: pm.getLaunchIntentForPackage(pkg) ?: return null
         return intent.component?.flattenToString()
-    }
-
-    private fun label(pkg: String): String = try {
-        context.packageManager.getApplicationInfo(pkg, 0).loadLabel(context.packageManager).toString()
-    } catch (_: Exception) {
-        pkg
     }
 
     private fun status(text: String?) = main.post { if (!closed.get()) listener.onAppStatus(text) }

@@ -13,6 +13,7 @@ import android.view.KeyEvent
 import android.view.WindowManager
 import io.github.tuthan.stationar.apps.AppScreens
 import io.github.tuthan.stationar.core.compat.AppCompat
+import io.github.tuthan.stationar.core.helper.TaskInfo
 import io.github.tuthan.stationar.core.keys.KeyFilter
 import io.github.tuthan.stationar.core.math.Quat
 import io.github.tuthan.stationar.core.pose.AxisCalibration
@@ -82,6 +83,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     private var appLine: String? = null
     /** The screen the screen menu (held Back) is for. */
     private var menuScreen = -1
+    /** Another app that opened over AR, while the panel asks what to do with it. */
+    private var offered: TaskInfo? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -168,16 +171,32 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     override fun onStop() {
         super.onStop()
         if (isChangingConfigurations || leaving) return
-        // AR doesn't run in the background: whatever took display 0 (Home, an app) ends it. Except an app in one of
-        // AR's screens opening something of its own on display 0 (VLC's player): that goes into the app's screen, and
-        // AR comes back.
+        // AR doesn't run in the background: whatever took display 0 (Home, an app) ends it. Except, while app screens
+        // are up, an app in one of them opening something of its own on display 0 (VLC's player): that goes into the
+        // app's screen, and AR comes back; or another app opening there (an AirPlay player): AR comes back and asks.
         if (apps.count == 0) {
             leave()
             return
         }
-        apps.reclaim { moved ->
-            if (!moved) leave() else if (!resumed) main.postDelayed(comeBackOrLeave, RECLAIM_WAIT_MS)
+        apps.reclaim { moved, other ->
+            if (!moved && other == null) {
+                leave()
+                return@reclaim
+            }
+            if (other != null) offerScreen(other)
+            if (!resumed) main.postDelayed(comeBackOrLeave, RECLAIM_WAIT_MS)
         }
+    }
+
+    /** Another app opened over AR (it's behind AR again now): show it in a screen, or leave AR for it. */
+    private fun offerScreen(task: TaskInfo) {
+        offered = task
+        panelHeader = "${StationAr.appName(this, task.pkg)} opened on the glasses"
+        panel.set(listOf("" to listOf(
+            PanelLayout.Item("offer-screen", "Show in a screen"),
+            PanelLayout.Item("offer-full", "Full screen", "leaves AR"),
+        )))
+        showPanelNow()
     }
 
     /** After a reclaim: AR should be on top again by now; if it isn't (Home was pressed meanwhile), AR ends. */
@@ -584,13 +603,20 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 closePanel()
             }
             id == "screen-done" -> closePanel()
+            id == "offer-screen" -> {
+                val t = offered ?: return closePanel()
+                offered = null
+                apps.adopt(t.pkg, t.id)
+                openApp(t.pkg)
+            }
+            id == "offer-full" -> leave()
         }
     }
 
     /** Opens an app in a screen where you look (or says why not). */
     private fun openApp(pkg: String) {
         val compat = AppCompat.of(pkg)
-        val label = StationAr.appNames[pkg] ?: pkg
+        val label = StationAr.appName(this, pkg)
         if (compat.status == AppCompat.Status.DRM || compat.status == AppCompat.Status.NO_VIDEO) {
             panelHeader = "$label: ${compat.note}"
             drawPanel()

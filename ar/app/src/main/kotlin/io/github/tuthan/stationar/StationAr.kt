@@ -33,6 +33,15 @@ object StationAr {
         }
     }
 
+    /** `pkg`'s name, as the app list shows it; looked up when the list hasn't been shown (an app opened from Station Home). */
+    fun appName(c: Context, pkg: String): String = appNames.getOrPut(pkg) {
+        try {
+            c.packageManager.getApplicationInfo(pkg, 0).loadLabel(c.packageManager).toString()
+        } catch (_: Exception) {
+            pkg.substringAfterLast('.')
+        }
+    }
+
     /** App labels by package, filled when the apps are listed. */
     val appNames = java.util.concurrent.ConcurrentHashMap<String, String>()
 }

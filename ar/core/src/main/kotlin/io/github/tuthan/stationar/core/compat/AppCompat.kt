@@ -21,7 +21,7 @@ object AppCompat {
         "com.wbd.stream" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
         "com.hbo.hbonow" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
         "com.apple.atve.androidtv.appletv" to Entry(Status.DRM, "Protected video is black in a screen: play it full-screen"),
-        "org.jellyfin.androidtv" to Entry(Status.UNTESTED, "Not tried in a screen yet"),
+        "org.jellyfin.androidtv" to Entry(Status.UNTESTED, "Menus and search work in a screen; video not tried yet"),
     )
 
     private val UNKNOWN = Entry(Status.UNTESTED, "Not tried in a screen yet")
