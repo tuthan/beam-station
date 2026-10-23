@@ -27,6 +27,7 @@ import io.github.tuthan.stationar.core.scene.Presets
 import io.github.tuthan.stationar.core.scene.ScreenSpec
 import io.github.tuthan.stationar.core.store.Settings
 import io.github.tuthan.stationar.core.stream.Handshake
+import io.github.tuthan.stationar.core.stream.ScreenOwners
 import io.github.tuthan.stationar.glasses.GlassesSession
 import io.github.tuthan.stationar.receiver.Advertiser
 import io.github.tuthan.stationar.receiver.StreamServer
@@ -91,6 +92,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     private val dismissed = HashSet<String>()
     /** The laptop was asked for another screen ([Handshake.MORE]) and it hasn't come yet. */
     private var moreAsked = false
+    /** Whose screen each laptop source shows, while AR is open (main thread): two laptops don't share `laptop:0`. */
+    private val owners = ScreenOwners(LAPTOPS)
 
     // Android apps in screens, and the remote following the gaze.
     private lateinit var apps: AppScreens
@@ -375,28 +378,32 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
             connection.answer("NO_DECODER")
             return
         }
-        // A screen must show the stream: add one if none does (unless you put it away), then play.
+        // The source for this laptop's screen; a screen must show it: add one if none does (unless you put it away),
+        // then play.
         val refusal = AtomicReference<String?>(null)
+        val assigned = AtomicReference<String?>(null)
         val done = CountDownLatch(1)
         main.post {
-            if (leaving || hello.source in dismissed) {
-                refusal.set("CLOSED")
+            val source = if (leaving) null else assign(laptop, hello.screen)
+            if (source == null || source in dismissed) {
+                refusal.set(if (source == null && !leaving) "BUSY" else "CLOSED")
                 done.countDown()
                 return@post
             }
+            assigned.set(source)
             glView.queueEvent {
                 val now = renderer.currentLayout()
                 // The screen that shows it takes its shape: a mirrored 21:9 monitor isn't squashed.
-                val next = if (shows(now, hello.source)) {
-                    Presets.fit(now, hello.source, hello.width, hello.height)
+                val next = if (shows(now, source)) {
+                    Presets.fit(now, source, hello.width, hello.height)
                 } else {
-                    Presets.place(now, hello.source, hello.width, hello.height) ?: run {
+                    Presets.place(now, source, hello.width, hello.height) ?: run {
                         refusal.set("BUSY")
                         null
                     }
                 }
                 if (next != null) {
-                    val added = !shows(now, hello.source)
+                    val added = !shows(now, source)
                     renderer.setLayout(next) { name -> sourceFor(name) }
                     main.post {
                         layout = next
@@ -413,12 +420,21 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         }
         if (!done.await(3, TimeUnit.SECONDS)) refusal.set("CLOSED")
         refusal.get()?.let {
-            AppLog.i("receiver: ${hello.source} refused: $it")
+            AppLog.i("receiver: \"$laptop\" screen ${hello.screen} refused: $it")
             connection.answer(it)
             return
         }
-        stream(hello.source).play(hello, laptop, connection)
+        val source = assigned.get() ?: return connection.answer("CLOSED")
+        AppLog.i("receiver: \"$laptop\" screen ${hello.screen} shows as $source")
+        stream(source).play(hello, laptop, connection)
     }
+
+    /**
+     * The source `laptop`'s screen `screen` shows ([ScreenOwners.assign]); one whose laptop has gone (not streaming,
+     * not put away) can be taken. Null when all are another laptop's now (main thread).
+     */
+    private fun assign(laptop: String, screen: String): String? =
+        owners.assign(laptop, screen) { streams[it]?.connected != true && it !in dismissed }
 
     /** The laptop sources streaming now. */
     private fun streaming(): Set<String> = streams.filterValues { it.connected }.keys
@@ -426,40 +442,46 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
     private fun shows(l: Layout, source: String) =
         if (source == "wide") l.screens.any { it.kind == "wide" } else l.indexOf(source) >= 0
 
-    /** A laptop screen added beside the first (Laptop 2 and up): put away, it's let go on the laptop, its monitor removed. */
-    private fun added(stream: String) = stream.startsWith("laptop:") && stream != "laptop:0"
+    /**
+     * A monitor a laptop added after its first (asked for with "+ Laptop screen", or `--monitors 2`): put away, it's let
+     * go on the laptop, its monitor removed.
+     */
+    private fun added(source: String) = owners.added(source)
+
+    /** The laptops "+ Laptop screen" can ask: streaming now, or with their first screen put away. */
+    private fun laptopsAround(): List<String> = owners.all.filter { (source, o) ->
+        streams[source]?.connected == true || (o.second == "0" && source in dismissed)
+    }.values.map { it.first }.distinct().sorted()
 
     /**
-     * "+ Laptop screen": Laptop 1, if you put it away, comes back (its laptop asks again every 2 s); else the laptop is
-     * asked for one more monitor ([Handshake.MORE]), which [Presets.place] puts beside the others when it connects.
+     * "+ Laptop screen" for `laptop`: its first screen, if you put it away, comes back (the laptop asks again every 2 s);
+     * else it's asked for one more monitor ([Handshake.MORE]), which [Presets.place] puts beside the others.
      */
-    private fun addLaptopScreen() {
+    private fun addLaptopScreen(laptop: String) {
         closePanel()
-        if ("laptop:0" in dismissed) {
-            dismissed.remove("laptop:0")
-            hint("${StationAr.screenLabel("laptop:0")} comes back in a moment", LAPTOP_HINT_MS)
+        val mine = owners.of(laptop)
+        mine.firstOrNull { owners.screen(it) == "0" && it in dismissed }?.let {
+            dismissed.remove(it)
+            hint("$laptop's screen comes back in a moment", LAPTOP_HINT_MS)
             return
         }
-        val live = streaming()
-        val laptops = live.filter { it.startsWith("laptop:") }
+        val live = mine.filter { streams[it]?.connected == true }
         when {
-            live.isEmpty() -> hint("Run station-ar-send on the laptop first", LAPTOP_HINT_MS)
-            laptops.isEmpty() -> hint("A --wide stream can't add screens", LAPTOP_HINT_MS)
-            laptops.size >= Handshake.MAX_LAPTOP_SCREENS ->
+            live.isEmpty() -> hint("Run station-ar-send on $laptop first", LAPTOP_HINT_MS)
+            "wide" in live -> hint("A --wide stream can't add screens", LAPTOP_HINT_MS)
+            streaming().count { it.startsWith("laptop:") } >= Handshake.MAX_LAPTOP_SCREENS ->
                 hint("${Handshake.MAX_LAPTOP_SCREENS} laptop screens at most", LAPTOP_HINT_MS)
             else -> {
-                // Screens closed before were let go on the laptop: the one it makes now may take one of their numbers.
-                dismissed.removeAll { added(it) }
-                val asked = streams.getValue(laptops.min())
+                val asked = streams.getValue(live.min())
                 moreAsked = true
-                hint("Asking the laptop for another screen…", MORE_WAIT_MS)
+                hint("Asking $laptop for another screen…", MORE_WAIT_MS)
                 work.execute {
-                    if (!asked.tell(Handshake.MORE)) main.post { moreAsked = false; hint("The laptop didn't take the request: try again", LAPTOP_HINT_MS) }
+                    if (!asked.tell(Handshake.MORE)) main.post { moreAsked = false; hint("$laptop didn't take the request: try again", LAPTOP_HINT_MS) }
                 }
                 main.postDelayed({
                     if (moreAsked) {
                         moreAsked = false
-                        hint("No new screen came: update station-ar-send on the laptop", LAPTOP_HINT_MS)
+                        hint("No new screen came: update station-ar-send on $laptop", LAPTOP_HINT_MS)
                     }
                 }, MORE_WAIT_MS)
             }
@@ -620,7 +642,7 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         val i = focusedIndex
         val spec = layout.screens.getOrNull(i) ?: return
         menuScreen = i
-        panelHeader = StationAr.screenLabel(spec.source)
+        panelHeader = StationAr.screenLabel(spec.source) + (owners.laptop(spec.source)?.let { " · $it" } ?: "")
         // Done first: OK straight away does nothing to the screen.
         val items = arrayListOf(
             PanelLayout.Item("screen-done", "Done"),
@@ -663,12 +685,13 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         layoutItems.add(PanelLayout.Item("recentre", "Re-centre"))
         val laptop = streaming().isNotEmpty()
         for (name in Presets.NAMES) layoutItems.add(PanelLayout.Item("preset:$name", Presets.label(name), Presets.detail(name, laptop)))
-        val laptopScreens = streaming().count { it.startsWith("laptop:") }
-        layoutItems.add(PanelLayout.Item("more-laptop", "+ Laptop screen", when {
-            !laptop -> "needs the laptop"
-            laptopScreens >= Handshake.MAX_LAPTOP_SCREENS -> "${Handshake.MAX_LAPTOP_SCREENS} at most"
-            else -> "beside the others"
-        }))
+        // One per laptop, which makes the monitor.
+        val full = streaming().count { it.startsWith("laptop:") } >= Handshake.MAX_LAPTOP_SCREENS
+        val around = laptopsAround()
+        if (around.isEmpty()) layoutItems.add(PanelLayout.Item("more-laptop:", "+ Laptop screen", "needs the laptop"))
+        for (name in around) {
+            layoutItems.add(PanelLayout.Item("more-laptop:$name", "+ Laptop screen", if (full) "${Handshake.MAX_LAPTOP_SCREENS} at most" else name))
+        }
         val view = listOf(
             PanelLayout.Item("size-", "Smaller", percent(settings.size)),
             PanelLayout.Item("size+", "Bigger"),
@@ -725,21 +748,29 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
                 }
                 // A laptop streaming to a screen this preset doesn't have stays away until one does; one you added is
                 // let go on the laptop, told before its screen goes (taking the screen away ends the connection).
-                val letGo = ArrayList<StreamSource>()
+                val letGo = ArrayList<String>()
                 for (name in STREAMS) {
-                    val s = streams[name]
-                    if (shows(l, name)) dismissed.remove(name) else if (s?.connected == true) {
-                        dismissed.add(name)
-                        if (added(name)) letGo.add(s)
+                    if (shows(l, name)) dismissed.remove(name) else if (streams[name]?.connected == true) {
+                        if (added(name)) letGo.add(name) else dismissed.add(name)
                     }
                 }
                 closePanel()
                 if (letGo.isEmpty()) setLayout(l) else work.execute {
-                    for (s in letGo) s.gone()
-                    main.post { setLayout(l) }
+                    for (name in letGo) streams[name]?.gone()
+                    main.post {
+                        // Gone for good on the laptop: the source is free for any laptop's next screen.
+                        for (name in letGo) owners.release(name)
+                        setLayout(l)
+                    }
                 }
             }
-            id == "more-laptop" -> addLaptopScreen()
+            id.startsWith("more-laptop:") -> {
+                val name = id.removePrefix("more-laptop:")
+                if (name.isNotEmpty()) addLaptopScreen(name) else {
+                    closePanel()
+                    hint("Run station-ar-send on the laptop first", LAPTOP_HINT_MS)
+                }
+            }
             id == "size-" || id == "size+" -> {
                 settings.size = settings.size + if (id == "size+") 0.05f else -0.05f
                 val s = settings.size
@@ -874,15 +905,19 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         val stream = if (source.startsWith("wide:")) "wide" else source
         val s = streams[stream]
         if (stream in STREAMS && s?.connected == true) {
-            dismissed.add(stream)
             if (added(stream)) {
-                // Told before its screen goes: taking the screen away ends the connection.
+                // Told before its screen goes: taking the screen away ends the connection. Gone for good on the laptop,
+                // the source is free for any laptop's next screen.
                 work.execute {
                     s.gone()
-                    main.post { removeScreen(source) }
+                    main.post {
+                        owners.release(stream)
+                        removeScreen(source)
+                    }
                 }
                 return
             }
+            dismissed.add(stream)
         }
         removeScreen(source)
     }
@@ -998,8 +1033,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         parts.add(clock.format(Date()))
         battery()?.let { parts.add(it) }
         if (!tracking) parts.add("no head tracking")
-        val laptop = streams.values.firstOrNull { it.connected }?.label
-        if (laptop != null) parts.add(laptop)
+        val laptops = streams.values.filter { it.connected }.map { it.label }.distinct()
+        if (laptops.isNotEmpty()) parts.add(laptops.joinToString(", "))
         val spec = layout.screens.getOrNull(focusedIndex)
         if (spec != null && layout.screens.size > 1) parts.add(StationAr.screenLabel(spec.source))
         val line = parts.joinToString("  ·  ")
@@ -1020,7 +1055,8 @@ class ArActivity : Activity(), Renderer.Listener, StreamServer.Listener, AppScre
         const val EXTRA_PRESET = "preset"
         const val EXTRA_PACKAGE = "package"
         const val EXTRA_LAPTOP = "laptop"
-        private val STREAMS = (0 until Handshake.MAX_LAPTOP_SCREENS).map { "laptop:$it" } + "wide"
+        private val LAPTOPS = (0 until Handshake.MAX_LAPTOP_SCREENS).map { "laptop:$it" }
+        private val STREAMS = LAPTOPS + "wide"
         private const val MAX_APP_SCREENS = 2
         private const val MAX_LISTED_APPS = 12
         private const val SCREEN_STEP = 10f

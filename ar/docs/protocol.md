@@ -52,8 +52,11 @@ Station: OK                          then the video, until either side closes
      or  VERSION 1                   (to any other version) the version this Station speaks
 ```
 
-- A `HELLO` for a screen that already streams **replaces** that connection: a laptop that lost the network and
-  reconnects takes over at once.
+- `<screen>` is the laptop's own number: the Station gives each (laptop name, screen) a source of its own while AR
+  is open (`ScreenOwners`), its own number if no other laptop has that, else the next free one (three laptop screens
+  in all, from any laptops). A second laptop's screen 0 shows beside the first laptop's, not instead of it.
+- A `HELLO` from the same laptop for a screen that already streams **replaces** that connection: a laptop that lost
+  the network and reconnects takes over at once.
 - If no screen shows the stream, Station AR adds one (`Presets.place`), at 1:1 for the stream's size: straight ahead
   when no laptop screen is up, else beside them; `wide` is two screens, the stream's left and right halves. A stream
   whose screen you put away (by choosing a layout without it, or closing it) is answered `CLOSED` until a layout
@@ -72,8 +75,8 @@ Station: GONE     you closed this screen in AR, or chose a layout without it: sc
                   wide stream ask again every 2 s, answered CLOSED until a layout shows them
 ```
 
-`MORE` goes on the lowest-numbered laptop stream, `GONE` on the stream it's about, before its screen goes (taking
-the screen away ends the connection).
+`MORE` goes on a stream of the laptop you chose (the panel has a *+ Laptop screen* tile per laptop), `GONE` on the
+stream it's about, before its screen goes (taking the screen away ends the connection).
 
 ## The video
 
